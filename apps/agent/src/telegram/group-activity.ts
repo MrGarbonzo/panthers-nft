@@ -2,7 +2,12 @@ import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
 import type { LLMClient } from '../llm/client.js';
 import type { PanthersBot } from './bot.js';
-import { decideAndGeneratePost, type GroupPostType } from '../llm/tasks.js';
+import {
+  decideAndGeneratePost,
+  type GroupPostType,
+  type MarketContextSummary,
+} from '../llm/tasks.js';
+import type { MarketContext } from '../trading/market-context.js';
 
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
 
@@ -11,6 +16,7 @@ export interface GroupActivityLoopParams {
   adapter: PanthersStateAdapter;
   llm: LLMClient;
   bot: PanthersBot;
+  market?: MarketContext;
   intervalMs?: number;
 }
 
@@ -67,6 +73,7 @@ export class GroupActivityLoop {
         : Math.floor((Date.now() - this.lastPostAt) / 60000);
 
     const recentMessages = this.params.bot.getRecentMessages();
+    const market = this.buildMarketSummary();
 
     const decision = await decideAndGeneratePost(
       this.params.llm,
@@ -78,6 +85,7 @@ export class GroupActivityLoop {
         avgNavUsdc,
         hasActiveAuction,
         minutesSinceLastPost,
+        market,
       },
     );
 
@@ -96,5 +104,21 @@ export class GroupActivityLoop {
     await this.params.bot.sendGroupMessage(decision.message);
     this.lastPostAt = Date.now();
     this.lastPostType = decision.postType;
+  }
+
+  private buildMarketSummary(): MarketContextSummary | null {
+    const snap = this.params.market?.getSnapshot();
+    if (!snap) return null;
+    return {
+      solPriceUsd: snap.coins.solana.priceUsd,
+      solChange24hPct: snap.coins.solana.change24hPct,
+      btcPriceUsd: snap.coins.bitcoin.priceUsd,
+      btcChange24hPct: snap.coins.bitcoin.change24hPct,
+      ethPriceUsd: snap.coins.ethereum.priceUsd,
+      ethChange24hPct: snap.coins.ethereum.change24hPct,
+      fearGreedValue: snap.fearGreed?.value ?? null,
+      fearGreedClassification: snap.fearGreed?.classification ?? null,
+      ageSeconds: Math.floor((Date.now() - snap.lastUpdatedAt) / 1000),
+    };
   }
 }

@@ -17,6 +17,7 @@ import { AuctionTicker } from './auction/ticker.js';
 import { AuctionScheduler } from './auction/scheduler.js';
 import { executeP2pSale } from './auction/p2p.js';
 import { GroupActivityLoop } from './telegram/group-activity.js';
+import { MarketContext } from './trading/market-context.js';
 
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const STALE_SALE_INTERVAL_MS = 5 * 60 * 1000;
@@ -223,6 +224,15 @@ async function main(): Promise<void> {
       scheduler.start();
       console.log('Auction ticker + scheduler started');
 
+      const coingeckoApiKey = process.env.COINGECKO_API_KEY;
+      let market: MarketContext | undefined;
+      if (coingeckoApiKey) {
+        market = new MarketContext({ coingeckoApiKey });
+        await market.start();
+      } else {
+        console.log('MarketContext skipped — missing COINGECKO_API_KEY');
+      }
+
       const activityIntervalMs = Number(
         process.env.GROUP_ACTIVITY_INTERVAL_MS ?? 30 * 60 * 1000,
       );
@@ -231,6 +241,7 @@ async function main(): Promise<void> {
         adapter,
         llm,
         bot,
+        market,
         intervalMs: activityIntervalMs,
       });
       groupActivity.start();

@@ -212,6 +212,18 @@ export interface GroupPostDecision {
   reasoning: string;
 }
 
+export interface MarketContextSummary {
+  solPriceUsd: number;
+  solChange24hPct: number;
+  btcPriceUsd: number;
+  btcChange24hPct: number;
+  ethPriceUsd: number;
+  ethChange24hPct: number;
+  fearGreedValue: number | null;
+  fearGreedClassification: string | null;
+  ageSeconds: number;
+}
+
 export async function decideAndGeneratePost(
   llm: LLMClient,
   signals: SignalState,
@@ -222,6 +234,7 @@ export async function decideAndGeneratePost(
     avgNavUsdc: number;
     hasActiveAuction: boolean;
     minutesSinceLastPost: number;
+    market: MarketContextSummary | null;
   },
 ): Promise<GroupPostDecision> {
   const system =
@@ -232,6 +245,16 @@ export async function decideAndGeneratePost(
     'there is something genuinely interesting to say.\n' +
     'Respond ONLY with JSON, no markdown fences.';
 
+  const marketBlock = context.market
+    ? `Live market (${context.market.ageSeconds}s old):\n` +
+      `- SOL: $${context.market.solPriceUsd.toFixed(2)} (${context.market.solChange24hPct >= 0 ? '+' : ''}${context.market.solChange24hPct.toFixed(2)}% 24h)\n` +
+      `- BTC: $${context.market.btcPriceUsd.toFixed(0)} (${context.market.btcChange24hPct >= 0 ? '+' : ''}${context.market.btcChange24hPct.toFixed(2)}% 24h)\n` +
+      `- ETH: $${context.market.ethPriceUsd.toFixed(2)} (${context.market.ethChange24hPct >= 0 ? '+' : ''}${context.market.ethChange24hPct.toFixed(2)}% 24h)\n` +
+      (context.market.fearGreedValue !== null
+        ? `- Fear & Greed: ${context.market.fearGreedValue} (${context.market.fearGreedClassification})\n`
+        : '')
+    : 'Live market: unavailable\n';
+
   const user =
     `Fund state:\n` +
     `- Avg NAV: ${signals.lastAvgNav.toFixed(2)} USDC\n` +
@@ -241,12 +264,14 @@ export async function decideAndGeneratePost(
     `- Pool performance: ${signals.lastPoolPerformancePct.toFixed(2)}%\n` +
     `- Active auction: ${context.hasActiveAuction}\n` +
     `- Minutes since last post: ${context.minutesSinceLastPost}\n\n` +
+    marketBlock +
+    '\n' +
     `Recent group messages (newest first):\n${recentMessages.slice(0, 10).join('\n') || '(none)'}\n\n` +
     'Respond with: {"postType": "nothing"|"market_take"|"portfolio_update"|"fun_fact"|"sentiment_observation"|"auction_tease", "message": "the post text (empty string if nothing)", "reasoning": "why you chose this"}\n' +
     'Rules:\n' +
     '- Default to "nothing" ~60% of the time. Silence is fine.\n' +
     '- Skip if active auction is true (no distractions).\n' +
-    '- market_take: comment on crypto/market vibes using pool performance and sentiment\n' +
+    '- market_take: comment on crypto/market using the LIVE market data above (SOL/BTC/ETH prices, F&G). Quote real numbers.\n' +
     '- portfolio_update: factual update on NAV/pool/NFTs\n' +
     '- fun_fact: crypto/NFT/markets trivia, in-character\n' +
     '- sentiment_observation: respond to the vibe of recent messages\n' +
