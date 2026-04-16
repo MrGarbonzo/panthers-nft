@@ -71,6 +71,7 @@ export class LLMClient {
   ): Promise<T> {
     const raw = await this.invoke(systemPrompt, userPrompt, maxTokens);
     let cleaned = raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .replace(/```json\s*/gi, '')
       .replace(/```\s*/g, '')
       .trim();
