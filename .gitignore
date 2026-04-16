@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+**/dist/
+.turbo/
+**/.turbo/
+
+# Environment and secrets
+docker/usr/.env
+**/.env
+!**/.env.template
+!**/.env.example
+
+# Database and runtime data
+*.db
+*.db-shm
+*.db-wal
+/data/
+**/data/
+
+# Public cache (runtime generated)
+public-cache.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+# Test artifacts
+test-simple.db
+test.db

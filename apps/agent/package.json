@@ -1,0 +1,32 @@
+{
+  "name": "@panthers/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@idiostasis/core": "file:../../packages/idiostasis-core",
+    "@jup-ag/api": "^6.0.48",
+    "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
+    "@metaplex-foundation/umi": "^1.5.1",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.5.1",
+    "@metaplex-foundation/umi-web3js-adapters": "^1.5.1",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.0",
+    "bs58": "^6.0.0",
+    "grammy": "^1.42.0",
+    "openai": "^6.34.0",
+    "technicalindicators": "^3.1.0",
+    "tweetnacl": "^1.0.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.8.0"
+  }
+}

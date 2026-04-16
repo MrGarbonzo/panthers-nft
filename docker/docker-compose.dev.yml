@@ -1,0 +1,24 @@
+services:
+  panthers-dev:
+    image: panthers-agent:local
+    build:
+      context: ..
+      dockerfile: docker/agent.dockerfile
+    container_name: panthers-agent-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - panthers_dev_data:/data
+    environment:
+      - NODE_ENV=development
+      - DEV_MODE=true
+      - STORAGE_BACKEND=simple
+      - DB_PATH=/data/panthers.db
+      - PUBLIC_CACHE_PATH=/data/public-cache.json
+      - PUBLIC_PORT=3000
+      - SOLANA_RPC_URL=https://api.devnet.solana.com
+
+volumes:
+  panthers_dev_data:
+    driver: local

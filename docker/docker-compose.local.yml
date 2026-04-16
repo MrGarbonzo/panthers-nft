@@ -1,0 +1,21 @@
+services:
+  panthers-agent:
+    build:
+      context: ..
+      dockerfile: docker/agent.dockerfile
+    container_name: panthers-agent-local
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - panthers_data_local:/data
+    environment:
+      - NODE_ENV=development
+      - STORAGE_BACKEND=simple
+      - DB_PATH=/data/panthers.db
+    env_file:
+      - usr/.env
+
+volumes:
+  panthers_data_local:
+    driver: local
