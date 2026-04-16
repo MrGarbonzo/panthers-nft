@@ -74,146 +74,157 @@ async function main(): Promise<void> {
   });
   publicServer.start();
 
+  if (devMode) {
+    console.log('DEV_MODE=true — storage-only boot');
+    console.log('Panthers agent initialized (storage-only mode)');
+    return;
+  }
+
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
   const telegramGroupChatId = process.env.TELEGRAM_GROUP_CHAT_ID;
   const heliusApiKey = process.env.HELIUS_API_KEY;
   const secretAiKey = process.env.SECRET_AI_API_KEY;
   const birdeyeApiKey = process.env.BIRDEYE_API_KEY;
 
-  const fullStackEnabled =
-    !devMode &&
-    telegramToken !== undefined &&
-    telegramGroupChatId !== undefined &&
-    heliusApiKey !== undefined &&
-    secretAiKey !== undefined &&
-    birdeyeApiKey !== undefined;
+  const llm = createLLMClient(secretAiKey ?? 'not-configured');
 
-  if (!fullStackEnabled) {
-    console.log(
-      devMode
-        ? 'DEV_MODE=true — skipping Telegram/Helius/Birdeye subsystems'
-        : 'Missing one or more runtime keys — running storage-only boot',
-    );
-    console.log('Panthers agent Phase 5b initialized (storage-only mode)');
-    return;
+  let bot: PanthersBot | null = null;
+  if (telegramToken && telegramGroupChatId) {
+    bot = new PanthersBot({
+      token: telegramToken,
+      groupChatId: telegramGroupChatId,
+      llm,
+      db,
+      adapter,
+      umi,
+      connection,
+      agentKeypair: keypair,
+      cacheWriter,
+    });
+    bot.start();
+    console.log('Telegram bot started');
+  } else {
+    console.log('Telegram bot skipped — missing TELEGRAM_BOT_TOKEN or TELEGRAM_GROUP_CHAT_ID');
   }
 
-  const llm = createLLMClient(secretAiKey!);
-
-  const bot = new PanthersBot({
-    token: telegramToken!,
-    groupChatId: telegramGroupChatId!,
-    llm,
-    db,
-    adapter,
-    umi,
-    connection,
-    agentKeypair: keypair,
-    cacheWriter,
-  });
-  bot.start();
-
-  const monitor = new UsdcMonitor({
-    heliusApiKey: heliusApiKey!,
-    agentWallet: keypair.publicKey.toBase58(),
-    usdcMint: USDC_MINT,
-    onInboundTransfer: async (transfer: InboundTransfer) => {
-      const currentState = await db.loadState(adapter);
-      const memo = transfer.memo;
-      const match =
-        memo !== null ? currentState.pendingSales[memo] : undefined;
-      if (!match) {
-        console.log(
-          `Unmatched USDC transfer: ${transfer.txSignature} amount=${transfer.amountUsdc} memo=${memo ?? 'none'}`,
-        );
-        return;
-      }
-      if (match.status !== 'awaiting_payment') {
-        console.log(
-          `Transfer for non-awaiting sale ${match.saleId} (status=${match.status}); ignoring`,
-        );
-        return;
-      }
-      if (Date.now() > match.expiresAt) {
-        console.log(`Sale ${match.saleId} expired; ignoring transfer`);
-        return;
-      }
-
-      if (match.listingId) {
-        const listing = currentState.p2pListings[match.listingId];
-        if (!listing) {
-          console.log(`P2P listing not found: ${match.listingId}`);
+  if (heliusApiKey && bot) {
+    const monitor = new UsdcMonitor({
+      heliusApiKey,
+      agentWallet: keypair.publicKey.toBase58(),
+      usdcMint: USDC_MINT,
+      onInboundTransfer: async (transfer: InboundTransfer) => {
+        const currentState = await db.loadState(adapter);
+        const memo = transfer.memo;
+        const match =
+          memo !== null ? currentState.pendingSales[memo] : undefined;
+        if (!match) {
+          console.log(
+            `Unmatched USDC transfer: ${transfer.txSignature} amount=${transfer.amountUsdc} memo=${memo ?? 'none'}`,
+          );
           return;
         }
+        if (match.status !== 'awaiting_payment') {
+          console.log(
+            `Transfer for non-awaiting sale ${match.saleId} (status=${match.status}); ignoring`,
+          );
+          return;
+        }
+        if (Date.now() > match.expiresAt) {
+          console.log(`Sale ${match.saleId} expired; ignoring transfer`);
+          return;
+        }
+
+        if (match.listingId) {
+          const listing = currentState.p2pListings[match.listingId];
+          if (!listing) {
+            console.log(`P2P listing not found: ${match.listingId}`);
+            return;
+          }
+          try {
+            const result = await executeP2pSale({
+              db,
+              adapter,
+              umi,
+              connection,
+              agentKeypair: keypair,
+              cacheWriter,
+              listingId: match.listingId,
+              buyerTelegramId: match.telegramUserId,
+              buyerWallet: match.buyerWallet,
+              agreedPriceUsdc: transfer.amountUsdc,
+              txSignature: transfer.txSignature,
+            });
+            const updatedState = await db.loadState(adapter);
+            const nft = updatedState.nfts[result.newTokenId];
+            await bot!.sendGroupMessage(
+              `Panthers Fund #${nft?.nftIndex ?? '?'} sold P2P. 🤝`,
+            );
+            console.log(`P2P sale complete: newTokenId=${result.newTokenId}`);
+          } catch (err) {
+            console.error(`Failed P2P sale ${match.saleId}:`, err);
+          }
+          return;
+        }
+
         try {
-          const result = await executeP2pSale({
+          const result = await completeSale({
             db,
             adapter,
             umi,
-            connection,
-            agentKeypair: keypair,
-            cacheWriter,
-            listingId: match.listingId,
-            buyerTelegramId: match.telegramUserId,
-            buyerWallet: match.buyerWallet,
-            agreedPriceUsdc: transfer.amountUsdc,
+            rpcUrl: solanaRpcUrl,
+            saleId: match.saleId,
+            confirmedAmountUsdc: transfer.amountUsdc,
             txSignature: transfer.txSignature,
+            cacheWriter,
           });
           const updatedState = await db.loadState(adapter);
-          const nft = updatedState.nfts[result.newTokenId];
-          await bot.sendGroupMessage(
-            `Panthers Fund #${nft?.nftIndex ?? '?'} sold P2P. 🤝`,
+          const nft = updatedState.nfts[result.tokenId];
+          await bot!.sendGroupMessage(
+            `Panthers Fund #${nft?.nftIndex ?? '?'} minted to new owner. 🐆`,
           );
-          console.log(`P2P sale complete: newTokenId=${result.newTokenId}`);
+          console.log(
+            `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress}`,
+          );
         } catch (err) {
-          console.error(`Failed P2P sale ${match.saleId}:`, err);
+          console.error(`Failed to complete sale ${match.saleId}:`, err);
         }
-        return;
-      }
+      },
+    });
+    monitor.start();
+    console.log('USDC monitor started');
+  } else {
+    console.log('USDC monitor skipped — missing HELIUS_API_KEY');
+  }
 
-      try {
-        const result = await completeSale({
-          db,
-          adapter,
-          umi,
-          rpcUrl: solanaRpcUrl,
-          saleId: match.saleId,
-          confirmedAmountUsdc: transfer.amountUsdc,
-          txSignature: transfer.txSignature,
-          cacheWriter,
-        });
-        const updatedState = await db.loadState(adapter);
-        const nft = updatedState.nfts[result.tokenId];
-        await bot.sendGroupMessage(
-          `Panthers Fund #${nft?.nftIndex ?? '?'} minted to new owner. 🐆`,
-        );
-        console.log(
-          `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress}`,
-        );
-      } catch (err) {
-        console.error(`Failed to complete sale ${match.saleId}:`, err);
-      }
-    },
-  });
-  monitor.start();
+  if (birdeyeApiKey) {
+    const birdeye = new BirdeyeClient(birdeyeApiKey);
+    const jupiter = new JupiterClient(connection, keypair);
+    const tradingLoop = new TradingLoop({
+      db,
+      adapter,
+      birdeye,
+      jupiter,
+      llm,
+      connection,
+      cacheWriter,
+    });
+    tradingLoop.start();
+    console.log('Trading loop started');
+  } else {
+    console.log('Trading loop skipped — missing BIRDEYE_API_KEY');
+  }
 
-  const birdeye = new BirdeyeClient(birdeyeApiKey!);
-  const jupiter = new JupiterClient(connection, keypair);
-  const tradingLoop = new TradingLoop({
-    db,
-    adapter,
-    birdeye,
-    jupiter,
-    llm,
-    connection,
-    cacheWriter,
-  });
-  tradingLoop.start();
-
-  const ticker = new AuctionTicker({ db, adapter, bot, cacheWriter });
-  const scheduler = new AuctionScheduler({ db, adapter, llm, bot, cacheWriter });
-  ticker.start();
-  scheduler.start();
+  if (bot) {
+    const ticker = new AuctionTicker({ db, adapter, bot, cacheWriter });
+    ticker.start();
+    if (secretAiKey) {
+      const scheduler = new AuctionScheduler({ db, adapter, llm, bot, cacheWriter });
+      scheduler.start();
+      console.log('Auction ticker + scheduler started');
+    } else {
+      console.log('Auction ticker started, scheduler skipped — missing SECRET_AI_API_KEY');
+    }
+  }
 
   setInterval(async () => {
     try {
@@ -228,7 +239,7 @@ async function main(): Promise<void> {
     }
   }, STALE_SALE_INTERVAL_MS);
 
-  console.log('Panthers agent Phase 5b initialized — auction engine active');
+  console.log('Panthers agent initialized');
 }
 
 main().catch((err) => {
