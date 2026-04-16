@@ -30,7 +30,7 @@ export async function detectBuyIntent(
     'Only return hasBuyIntent: true for clear expressions of purchase interest.\n' +
     'Casual questions about the fund, price checks, or general curiosity are NOT buy intent.';
 
-  return llm.invokeForJson<BuyIntentResult>(system, user, 200);
+  return llm.invokeForJson<BuyIntentResult>(system, user, 500);
 }
 
 export interface HaggleResult {
@@ -65,7 +65,7 @@ export async function generateHaggleResponse(
     '- counter offers should move down gradually from ceiling toward floor\n' +
     '- Keep messages under 3 sentences, in character as the fund agent';
 
-  return llm.invokeForJson<HaggleResult>(system, user, 400);
+  return llm.invokeForJson<HaggleResult>(system, user, 500);
 }
 
 export interface SentimentResult {

@@ -19,7 +19,7 @@ export class LLMClient {
     apiKey?: string,
     model?: string,
     private readonly temperature: number = 0.7,
-    private readonly maxTokens: number = 800,
+    private readonly maxTokens: number = 4096,
   ) {
     this.apiKey = apiKey ?? process.env.SECRET_AI_API_KEY;
     let base = (
@@ -28,11 +28,11 @@ export class LLMClient {
     if (!base.endsWith('/v1')) base = `${base}/v1`;
     this._baseUrl = base;
     const configured =
-      model ?? process.env.SECRET_AI_MODEL ?? 'deepseek-r1:70b';
+      model ?? process.env.SECRET_AI_MODEL ?? 'gemma3:4b';
     const match = SECRET_AI_MODELS.find((m) =>
       m.toLowerCase().includes(configured.toLowerCase()),
     );
-    this.resolvedModel = match ?? 'deepseek-r1:70b';
+    this.resolvedModel = match ?? 'gemma3:4b';
   }
 
   private ensureClient(): OpenAI {
@@ -71,7 +71,7 @@ export class LLMClient {
   ): Promise<T> {
     const raw = await this.invoke(systemPrompt, userPrompt, maxTokens);
     let cleaned = raw
-      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<think>[\s\S]*?(<\/think>|$)/gi, '')
       .replace(/```json\s*/gi, '')
       .replace(/```\s*/g, '')
       .trim();
