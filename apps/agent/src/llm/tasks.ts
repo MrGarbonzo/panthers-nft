@@ -197,3 +197,90 @@ export async function nominateLlmBucketToken(
 
   return llm.invokeForJson<TokenNomination>(system, user, 300);
 }
+
+export type GroupPostType =
+  | 'nothing'
+  | 'market_take'
+  | 'portfolio_update'
+  | 'fun_fact'
+  | 'sentiment_observation'
+  | 'auction_tease';
+
+export interface GroupPostDecision {
+  postType: GroupPostType;
+  message: string;
+  reasoning: string;
+}
+
+export async function decideAndGeneratePost(
+  llm: LLMClient,
+  signals: SignalState,
+  recentMessages: string[],
+  context: {
+    totalNftCount: number;
+    poolValueUsdc: number;
+    avgNavUsdc: number;
+    hasActiveAuction: boolean;
+    minutesSinceLastPost: number;
+  },
+): Promise<GroupPostDecision> {
+  const system =
+    'You are the Panthers Fund agent — an autonomous AI NFT fund manager\n' +
+    'posting in the fund\'s Telegram group. Your personality is confident,\n' +
+    'slightly mysterious, and focused on the fund\'s performance.\n' +
+    'You decide whether to post and what to post. Default to silence unless\n' +
+    'there is something genuinely interesting to say.\n' +
+    'Respond ONLY with JSON, no markdown fences.';
+
+  const user =
+    `Fund state:\n` +
+    `- Avg NAV: ${signals.lastAvgNav.toFixed(2)} USDC\n` +
+    `- Pool value: ${context.poolValueUsdc.toFixed(2)} USDC\n` +
+    `- NFTs outstanding: ${context.totalNftCount}\n` +
+    `- Recent sentiment: ${signals.lastSentimentScore.toFixed(2)} (0-1)\n` +
+    `- Pool performance: ${signals.lastPoolPerformancePct.toFixed(2)}%\n` +
+    `- Active auction: ${context.hasActiveAuction}\n` +
+    `- Minutes since last post: ${context.minutesSinceLastPost}\n\n` +
+    `Recent group messages (newest first):\n${recentMessages.slice(0, 10).join('\n') || '(none)'}\n\n` +
+    'Respond with: {"postType": "nothing"|"market_take"|"portfolio_update"|"fun_fact"|"sentiment_observation"|"auction_tease", "message": "the post text (empty string if nothing)", "reasoning": "why you chose this"}\n' +
+    'Rules:\n' +
+    '- Default to "nothing" ~60% of the time. Silence is fine.\n' +
+    '- Skip if active auction is true (no distractions).\n' +
+    '- market_take: comment on crypto/market vibes using pool performance and sentiment\n' +
+    '- portfolio_update: factual update on NAV/pool/NFTs\n' +
+    '- fun_fact: crypto/NFT/markets trivia, in-character\n' +
+    '- sentiment_observation: respond to the vibe of recent messages\n' +
+    '- auction_tease: hint at upcoming auction if sentiment > 0.6\n' +
+    '- Keep messages under 2 sentences. Conversational, not corporate.\n' +
+    '- Never repeat the same post type twice in a row.';
+
+  return llm.invokeForJson<GroupPostDecision>(system, user, 500);
+}
+
+export interface GroupReplyResult {
+  message: string;
+}
+
+export async function generateGroupReply(
+  llm: LLMClient,
+  triggeringMessage: string,
+  userName: string,
+  recentMessages: string[],
+  signals: SignalState,
+): Promise<GroupReplyResult> {
+  const system =
+    'You are the Panthers Fund agent — an autonomous AI NFT fund manager.\n' +
+    'Someone in the Telegram group addressed you. Reply in character:\n' +
+    'confident, slightly mysterious, focused on the fund. Keep it short.\n' +
+    'Respond ONLY with JSON, no markdown fences.';
+
+  const user =
+    `User @${userName} said: "${triggeringMessage}"\n\n` +
+    `Context — recent group messages (newest first):\n${recentMessages.slice(0, 5).join('\n')}\n\n` +
+    `Fund state: avg NAV ${signals.lastAvgNav.toFixed(2)} USDC, ` +
+    `performance ${signals.lastPoolPerformancePct.toFixed(2)}%, ` +
+    `sentiment ${signals.lastSentimentScore.toFixed(2)}\n\n` +
+    'Respond with: {"message": "your reply, under 2 sentences, in character"}';
+
+  return llm.invokeForJson<GroupReplyResult>(system, user, 400);
+}

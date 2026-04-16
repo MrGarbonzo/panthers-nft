@@ -16,6 +16,7 @@ import { PublicBalanceServer } from './public/server.js';
 import { AuctionTicker } from './auction/ticker.js';
 import { AuctionScheduler } from './auction/scheduler.js';
 import { executeP2pSale } from './auction/p2p.js';
+import { GroupActivityLoop } from './telegram/group-activity.js';
 
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const STALE_SALE_INTERVAL_MS = 5 * 60 * 1000;
@@ -221,6 +222,18 @@ async function main(): Promise<void> {
       const scheduler = new AuctionScheduler({ db, adapter, llm, bot, cacheWriter });
       scheduler.start();
       console.log('Auction ticker + scheduler started');
+
+      const activityIntervalMs = Number(
+        process.env.GROUP_ACTIVITY_INTERVAL_MS ?? 30 * 60 * 1000,
+      );
+      const groupActivity = new GroupActivityLoop({
+        db,
+        adapter,
+        llm,
+        bot,
+        intervalMs: activityIntervalMs,
+      });
+      groupActivity.start();
     } else {
       console.log('Auction ticker started, scheduler skipped — missing SECRET_AI_API_KEY');
     }

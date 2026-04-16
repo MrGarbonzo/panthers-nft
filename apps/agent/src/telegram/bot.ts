@@ -32,6 +32,7 @@ import {
   generateHaggleResponse,
   scoreSentiment,
   decideAuctionType,
+  generateGroupReply,
 } from '../llm/tasks.js';
 import { processWithdrawal } from '../solana/withdraw.js';
 import {
@@ -234,6 +235,10 @@ export class PanthersBot {
     });
   }
 
+  getRecentMessages(): string[] {
+    return [...this.messageBuffer];
+  }
+
   private async handleGroupMessage(ctx: Context): Promise<void> {
     const text = ctx.message?.text;
     const from = ctx.from;
@@ -248,6 +253,8 @@ export class PanthersBot {
     }
 
     if (await this.tryAnswerBalanceQuery(ctx, text)) return;
+
+    if (await this.tryReplyToMention(ctx, text, userName)) return;
 
     try {
       const intent = await detectBuyIntent(this.params.llm, text, userName);
@@ -264,6 +271,43 @@ export class PanthersBot {
     } catch (err) {
       console.error('detectBuyIntent failed:', err);
     }
+  }
+
+  private async tryReplyToMention(
+    ctx: Context,
+    text: string,
+    userName: string,
+  ): Promise<boolean> {
+    const botUsername = this.bot.botInfo?.username;
+    if (!botUsername) return false;
+
+    const botUserId = this.bot.botInfo.id;
+    const replyToBot = ctx.message?.reply_to_message?.from?.id === botUserId;
+    const entities = ctx.message?.entities ?? [];
+    const mentioned = entities.some((e) => {
+      if (e.type !== 'mention') return false;
+      const slice = text.slice(e.offset, e.offset + e.length);
+      return slice.toLowerCase() === `@${botUsername.toLowerCase()}`;
+    });
+
+    if (!replyToBot && !mentioned) return false;
+
+    try {
+      const state = await this.params.db.loadState(this.params.adapter);
+      const result = await generateGroupReply(
+        this.params.llm,
+        text,
+        userName,
+        this.getRecentMessages(),
+        state.signals,
+      );
+      if (result.message.trim()) {
+        await ctx.reply(result.message);
+      }
+    } catch (err) {
+      console.error('generateGroupReply failed:', err);
+    }
+    return true;
   }
 
   private async tryAnswerBalanceQuery(
