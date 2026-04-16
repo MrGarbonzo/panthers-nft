@@ -251,10 +251,14 @@ export class PanthersBot {
 
     try {
       const intent = await detectBuyIntent(this.params.llm, text, userName);
+      console.log(
+        `detectBuyIntent: user=${userName} hasBuyIntent=${intent.hasBuyIntent} confidence=${intent.confidence}`,
+      );
       if (
         intent.hasBuyIntent &&
         (intent.confidence === 'high' || intent.confidence === 'medium')
       ) {
+        console.log(`Opening buy DM for ${userName} (${String(from.id)})`);
         await this.openBuyDm(String(from.id), userName);
       }
     } catch (err) {
