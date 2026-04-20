@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"const fs=require('fs');fs.mkdirSync('dist/public',{recursive:true});fs.copyFileSync('src/public/index.html','dist/public/index.html')\"",
     "start": "node dist/index.js"
   },
   "dependencies": {

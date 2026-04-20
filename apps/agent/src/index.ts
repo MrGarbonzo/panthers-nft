@@ -1,4 +1,5 @@
 import { Connection } from '@solana/web3.js';
+import { mkdirSync } from 'node:fs';
 import { PanthersDb } from './db/panthers-db.js';
 import type { StorageBackend } from './db/storage-backend.js';
 import { CONFIG } from './db/config-keys.js';
@@ -80,11 +81,15 @@ async function main(): Promise<void> {
   );
   console.log(`NFT count: ${Object.keys(state.nfts).length}`);
 
+  const nftImagesDir = '/data/nft-images';
+  try { mkdirSync(nftImagesDir, { recursive: true }); } catch {}
+
   const publicServer = new PublicBalanceServer({
     cacheWriter,
     port: publicPort,
     devMode,
     startedAt: Date.now(),
+    nftImagesDir,
   });
   publicServer.start();
 

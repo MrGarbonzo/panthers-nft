@@ -13,6 +13,8 @@ export const CONFIG = {
   FEE_PCT_ON_BURN: 'fee_pct_on_burn',
   GROUP_ACTIVITY_INTERVAL_MS: 'group_activity_interval_ms',
 
+  AGENT_PUBLIC_URL: 'agent_public_url',
+
   LLM_MODEL_ROUTING: 'llm_model_routing',
   SOLANA_KEYPAIR: 'solana_keypair',
 } as const;

@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panthers Fund</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0A0A0A;
+  --surface: #111111;
+  --surface2: #1A1A1A;
+  --border: #1E1E1E;
+  --orange: #E8780E;
+  --orange-dim: rgba(232, 120, 14, 0.12);
+  --orange-glow: 0 0 24px rgba(232, 120, 14, 0.35);
+  --red: #D42B1E;
+  --cream: #F0E8D8;
+  --text: #EFEFEF;
+  --muted: #555555;
+  --gain: #3DD68C;
+  --loss: #D42B1E;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  min-height: 100vh;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+}
+
+.header {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+}
+.header-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  letter-spacing: 2px;
+}
+.header-logo .orange { color: var(--orange); }
+.header-logo .cream { color: var(--cream); }
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+}
+.live-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--orange);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(232,120,14,0.4); }
+  50% { opacity: 0.7; box-shadow: 0 0 8px 4px rgba(232,120,14,0.2); }
+}
+.live-label { color: var(--orange); font-weight: 600; font-size: 12px; letter-spacing: 1px; }
+
+.tab-nav {
+  display: flex;
+  height: 48px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+}
+.tab-btn {
+  background: none; border: none; color: var(--muted);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 16px; letter-spacing: 2px;
+  padding: 0 24px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+.tab-btn.active { color: var(--orange); border-bottom-color: var(--orange); }
+.tab-btn:hover { color: var(--text); }
+
+.content { max-width: 1400px; margin: 0 auto; padding: 24px; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.error-banner {
+  display: none;
+  background: var(--red);
+  color: #fff;
+  text-align: center;
+  padding: 8px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 14px;
+  letter-spacing: 2px;
+}
+.error-banner.visible { display: block; }
+
+/* Stat cards */
+.stat-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 20px;
+  transition: background 0.2s;
+}
+.stat-card:hover { background: var(--orange-dim); }
+.stat-label {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.stat-value {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 36px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.stat-sub {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.stat-gain { color: var(--gain); }
+.stat-loss { color: var(--loss); }
+.stat-glow { box-shadow: var(--orange-glow); }
+
+/* Allocation bar */
+.alloc-section { margin-bottom: 24px; }
+.alloc-label {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 13px;
+  color: var(--orange);
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.alloc-bar {
+  display: flex;
+  gap: 2px;
+  height: 32px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.alloc-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text);
+  min-width: 40px;
+}
+.alloc-seg.core { background: #3A3D42; }
+.alloc-seg.top10 { background: var(--orange); }
+.alloc-seg.llm { background: var(--red); }
+.alloc-legend {
+  display: flex;
+  gap: 24px;
+  margin-top: 8px;
+}
+.alloc-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+}
+.alloc-legend-dot {
+  width: 8px; height: 8px; border-radius: 2px;
+}
+
+/* Two column layout */
+.columns {
+  display: grid;
+  grid-template-columns: 60% 40%;
+  gap: 24px;
+}
+.col-header {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+/* Positions table */
+.pos-table { width: 100%; }
+.pos-table th {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.pos-table td {
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.bucket-badge {
+  display: inline-block;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.bucket-badge.core { background: #3A3D42; color: var(--text); }
+.bucket-badge.top10 { background: var(--orange-dim); color: var(--orange); }
+.bucket-badge.llm { background: rgba(212,43,30,0.15); color: var(--red); }
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--muted);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  letter-spacing: 2px;
+}
+
+/* Trades list */
+.trades-list {
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.trade-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.trade-left { display: flex; flex-direction: column; gap: 4px; }
+.trade-right { text-align: right; display: flex; flex-direction: column; gap: 4px; }
+.trade-side {
+  display: inline-block;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.trade-side.buy { background: rgba(61,214,140,0.15); color: var(--gain); }
+.trade-side.sell { background: rgba(212,43,30,0.15); color: var(--loss); }
+.trade-token {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+.trade-pnl { font-family: 'Space Mono', monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
+.trade-size { font-family: 'Rajdhani', sans-serif; font-size: 12px; color: var(--muted); }
+.trade-time { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); }
+
+/* Collection */
+.search-bar {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  color: var(--text);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 16px;
+  letter-spacing: 2px;
+  outline: none;
+  margin-bottom: 24px;
+  transition: border-color 0.2s;
+}
+.search-bar::placeholder { color: var(--muted); }
+.search-bar:focus { border-color: var(--orange); }
+
+.nft-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.nft-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: default;
+}
+.nft-card:hover { border-color: var(--orange); box-shadow: var(--orange-glow); }
+.nft-img-wrap {
+  width: 100%; height: 220px;
+  background: var(--surface2);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.nft-img-wrap img { width: 100%; height: 100%; object-fit: cover; }
+.nft-img-wrap .placeholder-svg {
+  width: 80px; height: 80px; opacity: 0.2;
+}
+.nft-body { padding: 16px; }
+.nft-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  letter-spacing: 1px;
+}
+.nft-nav {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 24px;
+  color: var(--orange);
+  margin: 4px 0;
+}
+.nft-gain-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.nft-gain { font-family: 'Space Mono', monospace; font-variant-numeric: tabular-nums; }
+.nft-deposited { color: var(--muted); font-family: 'Rajdhani', sans-serif; }
+.custody-badge {
+  display: inline-block;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid;
+  margin-bottom: 8px;
+}
+.custody-badge.agent { border-color: var(--orange); background: var(--orange-dim); color: var(--orange); }
+.custody-badge.self { border-color: var(--border); background: var(--surface2); color: var(--muted); }
+.nft-link {
+  display: block;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.nft-link:hover { color: var(--orange); }
+
+.collection-empty {
+  text-align: center;
+  padding: 80px 24px;
+}
+.collection-empty .emoji { font-size: 64px; margin-bottom: 16px; }
+.collection-empty .title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 24px;
+  color: var(--muted);
+  letter-spacing: 2px;
+}
+.collection-empty .sub {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.footer {
+  text-align: center;
+  padding: 40px 24px 24px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+
+/* Skeleton loading */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #111 25%, #1A1A1A 50%, #111 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+.skeleton-stat { height: 80px; }
+.skeleton-bar { height: 32px; margin-bottom: 24px; }
+.skeleton-row { height: 40px; margin-bottom: 8px; }
+.skeleton-card { height: 320px; }
+
+@media (max-width: 768px) {
+  .stat-bar { grid-template-columns: repeat(2, 1fr); }
+  .columns { grid-template-columns: 1fr; }
+  .nft-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+}
+</style>
+</head>
+<body>
+
+<div class="error-banner" id="error-banner">CONNECTION LOST — RETRYING</div>
+
+<header class="header">
+  <div class="header-logo"><span class="orange">PANTHERS</span> <span class="cream">FUND</span></div>
+  <div class="header-right">
+    <div class="live-dot"></div>
+    <span class="live-label">LIVE</span>
+    <span id="last-updated"></span>
+  </div>
+</header>
+
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="fund">FUND</button>
+  <button class="tab-btn" data-tab="collection">COLLECTION</button>
+</nav>
+
+<main class="content">
+  <!-- FUND TAB -->
+  <div class="tab-content active" id="tab-fund">
+    <div class="stat-bar" id="stat-bar">
+      <div class="stat-card skeleton skeleton-stat"></div>
+      <div class="stat-card skeleton skeleton-stat"></div>
+      <div class="stat-card skeleton skeleton-stat"></div>
+      <div class="stat-card skeleton skeleton-stat"></div>
+    </div>
+    <div class="alloc-section" id="alloc-section">
+      <div class="skeleton skeleton-bar"></div>
+    </div>
+    <div class="columns" id="columns">
+      <div>
+        <div class="col-header">OPEN POSITIONS</div>
+        <div id="positions"><div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>
+      </div>
+      <div>
+        <div class="col-header">RECENT TRADES</div>
+        <div id="trades"><div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLLECTION TAB -->
+  <div class="tab-content" id="tab-collection">
+    <input class="search-bar" id="search" type="text" placeholder="SEARCH BY NUMBER — e.g. 142">
+    <div id="nft-grid" class="nft-grid">
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">PANTHERS FUND &middot; AUTONOMOUS AI TRADING &middot; POWERED BY SECRET NETWORK</footer>
+
+<script>
+let allNfts = [];
+let stats = null;
+let hasError = false;
+
+const $ = id => document.getElementById(id);
+
+function formatUSD(n) {
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function formatPct(n) {
+  return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+}
+function truncateMint(addr) {
+  if (!addr || addr.length < 8) return addr || '';
+  return addr.slice(0, 4) + '...' + addr.slice(-4);
+}
+function timeAgo(ts) {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 60) return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    $('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// Search
+$('search').addEventListener('input', e => {
+  const q = e.target.value.replace(/\D/g, '');
+  renderNfts(q);
+});
+
+async function fetchAll() {
+  try {
+    const [statsRes, nftsRes] = await Promise.all([
+      fetch('/stats'),
+      fetch('/nfts'),
+    ]);
+    if (!statsRes.ok || !nftsRes.ok) throw new Error('API error');
+    stats = await statsRes.json();
+    allNfts = await nftsRes.json();
+    hasError = false;
+    $('error-banner').classList.remove('visible');
+    renderFund();
+    renderNfts();
+    $('last-updated').textContent = timeAgo(stats.lastUpdatedAt);
+  } catch (e) {
+    console.error('Fetch failed:', e);
+    hasError = true;
+    $('error-banner').classList.add('visible');
+  }
+}
+
+function renderFund() {
+  if (!stats) return;
+
+  const perfColor = stats.performancePct >= 0 ? 'stat-gain' : 'stat-loss';
+  const perfGlow = stats.performancePct > 0 ? ' stat-glow' : '';
+
+  $('stat-bar').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">TVL</div>
+      <div class="stat-value">${formatUSD(stats.totalPoolValueUsdc)}</div>
+      <div class="stat-sub">Total Value Locked</div>
+    </div>
+    <div class="stat-card${perfGlow}">
+      <div class="stat-label">PERFORMANCE</div>
+      <div class="stat-value ${perfColor}">${formatPct(stats.performancePct)}</div>
+      <div class="stat-sub">Since Inception</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">HOLDINGS</div>
+      <div class="stat-value">${stats.totalNftCount} NFTs</div>
+      <div class="stat-sub">Outstanding Shares</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">AVG NAV</div>
+      <div class="stat-value" style="color:var(--orange)">${formatUSD(stats.avgNavUsdc)}</div>
+      <div class="stat-sub">Per Share</div>
+    </div>
+  `;
+
+  // Allocation bar
+  const a = stats.allocations;
+  const total = a.corePct + a.top10Pct + a.llmPct;
+  const cashPct = Math.max(0, 100 - total);
+  $('alloc-section').innerHTML = `
+    <div class="alloc-label">ALLOCATION</div>
+    <div class="alloc-bar">
+      ${a.corePct > 0 ? `<div class="alloc-seg core" style="flex:${a.corePct}">CORE ${a.corePct.toFixed(0)}%</div>` : ''}
+      ${a.top10Pct > 0 ? `<div class="alloc-seg top10" style="flex:${a.top10Pct}">TOP 10 ${a.top10Pct.toFixed(0)}%</div>` : ''}
+      ${a.llmPct > 0 ? `<div class="alloc-seg llm" style="flex:${a.llmPct}">LLM ${a.llmPct.toFixed(0)}%</div>` : ''}
+      ${cashPct > 0 ? `<div class="alloc-seg" style="flex:${cashPct};background:var(--surface2)">CASH ${cashPct.toFixed(0)}%</div>` : ''}
+    </div>
+    <div class="alloc-legend">
+      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:#3A3D42"></div>CORE ${formatUSD(a.coreUsdc)}</div>
+      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:var(--orange)"></div>TOP 10 ${formatUSD(a.top10Usdc)}</div>
+      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:var(--red)"></div>LLM ${formatUSD(a.llmUsdc)}</div>
+    </div>
+  `;
+
+  // Positions
+  const posEl = $('positions');
+  if (stats.openPositions.length === 0) {
+    posEl.innerHTML = '<div class="empty-state">THE FUND IS IN CASH</div>';
+  } else {
+    posEl.innerHTML = `
+      <table class="pos-table">
+        <thead><tr><th>TOKEN</th><th>BUCKET</th><th>ENTRY</th><th>SIZE</th><th>OPENED</th></tr></thead>
+        <tbody>
+          ${stats.openPositions.map(p => `
+            <tr>
+              <td>${truncateMint(p.tokenMint)}</td>
+              <td><span class="bucket-badge ${p.bucket}">${p.bucket.toUpperCase()}</span></td>
+              <td>${formatUSD(p.entryPrice)}</td>
+              <td>${formatUSD(p.sizeUsdc)}</td>
+              <td>${timeAgo(p.openedAt)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  // Trades
+  const tradesEl = $('trades');
+  if (stats.recentTrades.length === 0) {
+    tradesEl.innerHTML = '<div class="empty-state">NO TRADES YET</div>';
+  } else {
+    tradesEl.innerHTML = `<div class="trades-list">${stats.recentTrades.map(t => `
+      <div class="trade-item">
+        <div class="trade-left">
+          <span class="trade-side ${t.side}">${t.side.toUpperCase()}</span>
+          <span class="trade-token">${truncateMint(t.tokenMint)}</span>
+        </div>
+        <div class="trade-right">
+          <span class="trade-pnl" style="color:${t.pnl >= 0 ? 'var(--gain)' : 'var(--loss)'}">${t.pnl >= 0 ? '+' : ''}${formatUSD(t.pnl)}</span>
+          <span class="trade-size">${formatUSD(t.sizeUsdc)}</span>
+          <span class="trade-time">${timeAgo(t.executedAt)}</span>
+        </div>
+      </div>
+    `).join('')}</div>`;
+  }
+}
+
+function renderNfts(filter) {
+  const grid = $('nft-grid');
+  const filtered = filter
+    ? allNfts.filter(n => String(n.nftIndex).includes(filter))
+    : allNfts;
+
+  if (filtered.length === 0 && allNfts.length === 0) {
+    grid.innerHTML = `
+      <div class="collection-empty" style="grid-column:1/-1">
+        <div class="emoji">&#x1F406;</div>
+        <div class="title">NO PANTHERS MINTED YET</div>
+        <div class="sub">THE FUND IS HUNTING</div>
+      </div>
+    `;
+    return;
+  }
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">NO MATCHES</div>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map(n => {
+    const gainColor = n.gainPct >= 0 ? 'var(--gain)' : 'var(--loss)';
+    const custodyClass = n.custodyMode === 'agent' ? 'agent' : 'self';
+    const custodyLabel = n.custodyMode === 'agent' ? 'AGENT CUSTODY' : 'SELF CUSTODY';
+    const explorerUrl = 'https://explorer.solana.com/address/' + n.mintAddress;
+    return `
+      <div class="nft-card">
+        <div class="nft-img-wrap">
+          <img src="/nft-image/${n.tokenId}" onerror="this.style.display='none';this.parentNode.innerHTML='<svg class=placeholder-svg viewBox=\\'0 0 100 100\\' xmlns=\\'http://www.w3.org/2000/svg\\'><path d=\\'M50 15 C30 15 15 35 15 50 C15 70 30 85 50 85 C70 85 85 70 85 50 C85 35 70 15 50 15Z\\' fill=\\'%23333\\'/><circle cx=\\'38\\' cy=\\'42\\' r=\\'4\\' fill=\\'%23555\\'/><circle cx=\\'62\\' cy=\\'42\\' r=\\'4\\' fill=\\'%23555\\'/><path d=\\'M40 60 Q50 68 60 60\\' stroke=\\'%23555\\' fill=\\'none\\' stroke-width=\\'2\\'/></svg>'">
+        </div>
+        <div class="nft-body">
+          <div class="nft-name">${n.name}</div>
+          <div class="nft-nav">${formatUSD(n.navUsdc)}</div>
+          <div class="nft-gain-row">
+            <span class="nft-gain" style="color:${gainColor}">${formatPct(n.gainPct)}</span>
+            <span class="nft-deposited">DEPOSITED ${formatUSD(n.usdcDeposited)}</span>
+          </div>
+          <div class="custody-badge ${custodyClass}">${custodyLabel}</div>
+          <a class="nft-link" href="${explorerUrl}" target="_blank" rel="noopener">VIEW ON-CHAIN &#8599;</a>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Initial load
+fetchAll();
+setInterval(fetchAll, 30000);
+
+// Retry faster on error
+setInterval(() => { if (hasError) fetchAll(); }, 10000);
+</script>
+</body>
+</html>

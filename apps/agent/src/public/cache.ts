@@ -3,6 +3,8 @@ import path from 'node:path';
 import type { PanthersState } from '../state/schema.js';
 
 export interface NftPublicRecord {
+  tokenId: string;
+  nftIndex: number;
   mintAddress: string;
   name: string;
   navUsdc: number;
@@ -10,6 +12,43 @@ export interface NftPublicRecord {
   gainPct: number;
   custodyMode: 'agent' | 'self';
   mintedAt: number;
+  lastUpdatedAt: number;
+}
+
+export interface PublicPosition {
+  tokenMint: string;
+  bucket: 'core' | 'top10' | 'llm';
+  entryPrice: number;
+  sizeUsdc: number;
+  openedAt: number;
+}
+
+export interface PublicTradeRecord {
+  tokenMint: string;
+  side: 'buy' | 'sell';
+  price: number;
+  sizeUsdc: number;
+  pnl: number;
+  bucket: 'core' | 'top10' | 'llm';
+  executedAt: number;
+}
+
+export interface PublicFundStats {
+  totalPoolValueUsdc: number;
+  totalUsdcDeposited: number;
+  performancePct: number;
+  totalNftCount: number;
+  avgNavUsdc: number;
+  allocations: {
+    coreUsdc: number;
+    top10Usdc: number;
+    llmUsdc: number;
+    corePct: number;
+    top10Pct: number;
+    llmPct: number;
+  };
+  openPositions: PublicPosition[];
+  recentTrades: PublicTradeRecord[];
   lastUpdatedAt: number;
 }
 
@@ -22,6 +61,7 @@ export interface PublicBalanceCache {
     avgNavUsdc: number;
     lastUpdatedAt: number;
   };
+  stats: PublicFundStats;
 }
 
 export class PublicCacheWriter {
@@ -39,6 +79,8 @@ export class PublicCacheWriter {
           ? ((nft.currentNav - nft.usdcDeposited) / nft.usdcDeposited) * 100
           : 0;
       const record: NftPublicRecord = {
+        tokenId: nft.tokenId,
+        nftIndex: nft.nftIndex,
         mintAddress: nft.mintAddress,
         name: `Panthers Fund #${nft.nftIndex}`,
         navUsdc: nft.currentNav,
@@ -58,13 +100,56 @@ export class PublicCacheWriter {
         ? nfts.reduce((sum, n) => sum + n.currentNav, 0) / totalNftCount
         : 0;
 
+    const totalPoolValueUsdc = state.pool.totalUsdcCurrentValue;
+    const alloc = state.pool.allocations;
+    const openPositions: PublicPosition[] = state.pool.openPositions.map((p) => ({
+      tokenMint: p.tokenMint,
+      bucket: p.bucket,
+      entryPrice: p.entryPrice,
+      sizeUsdc: p.entryPrice * p.size,
+      openedAt: p.openedAt,
+    }));
+    const recentTrades: PublicTradeRecord[] = state.pool.tradingHistory
+      .slice(-20)
+      .reverse()
+      .map((t) => ({
+        tokenMint: t.tokenMint,
+        side: t.side,
+        price: t.price,
+        sizeUsdc: t.price * t.size,
+        pnl: t.pnl,
+        bucket: t.bucket,
+        executedAt: t.executedAt,
+      }));
+
     const cache: PublicBalanceCache = {
       byMint,
       byName,
       fundSummary: {
-        totalPoolValueUsdc: state.pool.totalUsdcCurrentValue,
+        totalPoolValueUsdc,
         totalNftCount,
         avgNavUsdc,
+        lastUpdatedAt: now,
+      },
+      stats: {
+        totalPoolValueUsdc,
+        totalUsdcDeposited: state.pool.totalUsdcDeposited,
+        performancePct: state.signals.lastPoolPerformancePct,
+        totalNftCount,
+        avgNavUsdc,
+        allocations: {
+          coreUsdc: alloc.coreValueUsdc,
+          top10Usdc: alloc.top10ValueUsdc,
+          llmUsdc: alloc.llmValueUsdc,
+          corePct: totalPoolValueUsdc > 0
+            ? (alloc.coreValueUsdc / totalPoolValueUsdc) * 100 : 0,
+          top10Pct: totalPoolValueUsdc > 0
+            ? (alloc.top10ValueUsdc / totalPoolValueUsdc) * 100 : 0,
+          llmPct: totalPoolValueUsdc > 0
+            ? (alloc.llmValueUsdc / totalPoolValueUsdc) * 100 : 0,
+        },
+        openPositions,
+        recentTrades,
         lastUpdatedAt: now,
       },
     };
