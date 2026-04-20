@@ -1,7 +1,7 @@
 import type { Connection } from '@solana/web3.js';
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
-import type { LLMClient } from '../llm/client.js';
+import type { LLMRouter } from '../llm/router.js';
 import type {
   PanthersState,
   Position,
@@ -42,7 +42,7 @@ export interface TradingLoopParams {
   adapter: PanthersStateAdapter;
   birdeye: BirdeyeClient;
   jupiter: JupiterClient;
-  llm: LLMClient;
+  llmRouter: LLMRouter;
   connection: Connection;
   cacheWriter?: PublicCacheWriter;
   intervalMs?: number;
@@ -239,7 +239,7 @@ export class TradingLoop {
     let nomination;
     try {
       nomination = await nominateLlmBucketToken(
-        this.params.llm,
+        this.params.llmRouter.for('nomination'),
         top10,
         state.pool.openPositions,
         state.signals,
@@ -336,7 +336,7 @@ export class TradingLoop {
 
     let decision: TradeDecision;
     try {
-      decision = await evaluateTradeProposal(this.params.llm, proposal);
+      decision = await evaluateTradeProposal(this.params.llmRouter.for('trade'), proposal);
     } catch (err) {
       console.error(`${args.bucket}: evaluateTradeProposal failed:`, err);
       return state;

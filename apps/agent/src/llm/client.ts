@@ -20,10 +20,11 @@ export class LLMClient {
     model?: string,
     private readonly temperature: number = 0.7,
     private readonly maxTokens: number = 4096,
+    baseUrl?: string,
   ) {
     this.apiKey = apiKey ?? process.env.SECRET_AI_API_KEY;
     let base = (
-      process.env.SECRET_AI_BASE_URL ?? 'https://ai.api.scrt.network'
+      baseUrl ?? process.env.SECRET_AI_BASE_URL ?? 'https://ai.api.scrt.network'
     ).replace(/\/+$/, '');
     if (!base.endsWith('/v1')) base = `${base}/v1`;
     this._baseUrl = base;

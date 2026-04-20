@@ -14,7 +14,8 @@ export interface InboundTransfer {
 }
 
 export interface UsdcMonitorOptions {
-  heliusApiKey: string;
+  wsUrl: string;
+  rpcUrl: string;
   agentWallet: string;
   usdcMint: string;
   onInboundTransfer: (transfer: InboundTransfer) => Promise<void>;
@@ -33,11 +34,8 @@ export class UsdcMonitor {
   private closed = false;
 
   constructor(private readonly opts: UsdcMonitorOptions) {
-    this.wsUrl = `wss://mainnet.helius-rpc.com/?api-key=${opts.heliusApiKey}`;
-    this.connection = new Connection(
-      `https://mainnet.helius-rpc.com/?api-key=${opts.heliusApiKey}`,
-      'confirmed',
-    );
+    this.wsUrl = opts.wsUrl;
+    this.connection = new Connection(opts.rpcUrl, 'confirmed');
     this.agentAta = getAssociatedTokenAddressSync(
       new PublicKey(opts.usdcMint),
       new PublicKey(opts.agentWallet),

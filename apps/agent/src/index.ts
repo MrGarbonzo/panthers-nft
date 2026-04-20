@@ -1,12 +1,13 @@
 import { Connection } from '@solana/web3.js';
 import { PanthersDb } from './db/panthers-db.js';
 import type { StorageBackend } from './db/storage-backend.js';
+import { CONFIG } from './db/config-keys.js';
 import { PanthersStateAdapter } from './state/adapter.js';
 import { initializeSolanaWallet } from './solana/wallet.js';
 import { initializeUmi } from './solana/umi-client.js';
 import { UsdcMonitor, type InboundTransfer } from './solana/monitor.js';
 import { completeSale } from './solana/deposit.js';
-import { createLLMClient } from './llm/client.js';
+import { LLMRouter } from './llm/router.js';
 import { PanthersBot } from './telegram/bot.js';
 import { BirdeyeClient } from './trading/birdeye.js';
 import { JupiterClient } from './trading/jupiter.js';
@@ -18,6 +19,7 @@ import { AuctionScheduler } from './auction/scheduler.js';
 import { executeP2pSale } from './auction/p2p.js';
 import { GroupActivityLoop } from './telegram/group-activity.js';
 import { MarketContext } from './trading/market-context.js';
+import { deriveWsUrl, isHeliusUrl } from './solana/rpc.js';
 
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const STALE_SALE_INTERVAL_MS = 5 * 60 * 1000;
@@ -25,9 +27,6 @@ const STALE_SALE_INTERVAL_MS = 5 * 60 * 1000;
 async function main(): Promise<void> {
   const dbPath = process.env.DB_PATH;
   if (!dbPath) throw new Error('DB_PATH environment variable is required');
-
-  const solanaRpcUrl = process.env.SOLANA_RPC_URL;
-  if (!solanaRpcUrl) throw new Error('SOLANA_RPC_URL environment variable is required');
 
   const devMode = process.env.DEV_MODE === 'true';
   const storageBackend = process.env.STORAGE_BACKEND ?? 'simple';
@@ -48,11 +47,24 @@ async function main(): Promise<void> {
     console.log('Storage backend: Simple (local SQLite)');
   }
 
-  const publicCachePath = process.env.PUBLIC_CACHE_PATH ?? '/data/public-cache.json';
-  const publicPort = Number(process.env.PUBLIC_PORT ?? '3000');
-
   const db = new PanthersDb(backend);
   const adapter = new PanthersStateAdapter();
+
+  const solanaRpcUrl = db.config.get(CONFIG.SOLANA_RPC_URL, {
+    envKey: 'SOLANA_RPC_URL',
+    required: true,
+  })!;
+
+  const publicCachePath = db.config.get(CONFIG.PUBLIC_CACHE_PATH, {
+    envKey: 'PUBLIC_CACHE_PATH',
+    defaultValue: '/data/public-cache.json',
+  })!;
+
+  const publicPort = Number(db.config.get(CONFIG.PUBLIC_PORT, {
+    envKey: 'PUBLIC_PORT',
+    defaultValue: '3000',
+  }));
+
   const cacheWriter = new PublicCacheWriter(publicCachePath);
   const state = await db.loadState(adapter);
   await cacheWriter.write(state).catch((err) =>
@@ -82,20 +94,50 @@ async function main(): Promise<void> {
     return;
   }
 
-  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-  const telegramGroupChatId = process.env.TELEGRAM_GROUP_CHAT_ID;
-  const heliusApiKey = process.env.HELIUS_API_KEY;
-  const secretAiKey = process.env.SECRET_AI_API_KEY;
-  const birdeyeApiKey = process.env.BIRDEYE_API_KEY;
+  const secretAiKey = db.config.get(CONFIG.SECRET_AI_API_KEY, {
+    envKey: 'SECRET_AI_API_KEY',
+    required: true,
+  })!;
 
-  const llm = createLLMClient(secretAiKey ?? 'not-configured');
+  const secretAiBaseUrl = db.config.get(CONFIG.SECRET_AI_BASE_URL, {
+    envKey: 'SECRET_AI_BASE_URL',
+    defaultValue: 'https://secretai-rytn.scrtlabs.com:21434',
+  })!;
+
+  const telegramToken = db.config.get(CONFIG.TELEGRAM_BOT_TOKEN, {
+    envKey: 'TELEGRAM_BOT_TOKEN',
+    required: true,
+  })!;
+
+  const telegramGroupChatId = db.config.get(CONFIG.TELEGRAM_GROUP_CHAT_ID, {
+    envKey: 'TELEGRAM_GROUP_CHAT_ID',
+    required: true,
+  })!;
+
+  const birdeyeApiKey = db.config.get(CONFIG.BIRDEYE_API_KEY, {
+    envKey: 'BIRDEYE_API_KEY',
+  });
+
+  const coingeckoApiKey = db.config.get(CONFIG.COINGECKO_API_KEY, {
+    envKey: 'COINGECKO_API_KEY',
+  });
+
+  const groupActivityIntervalMs = Number(db.config.get(
+    CONFIG.GROUP_ACTIVITY_INTERVAL_MS, {
+      envKey: 'GROUP_ACTIVITY_INTERVAL_MS',
+      defaultValue: String(30 * 60 * 1000),
+    },
+  ));
+
+  const llmRouter = new LLMRouter(secretAiKey, secretAiBaseUrl, db.config);
+  console.log(`[Boot] Config loaded. SecretAI base: ${secretAiBaseUrl}`);
 
   let bot: PanthersBot | null = null;
   if (telegramToken && telegramGroupChatId) {
     bot = new PanthersBot({
       token: telegramToken,
       groupChatId: telegramGroupChatId,
-      llm,
+      llmRouter,
       db,
       adapter,
       umi,
@@ -105,13 +147,13 @@ async function main(): Promise<void> {
     });
     bot.start();
     console.log('Telegram bot started');
-  } else {
-    console.log('Telegram bot skipped — missing TELEGRAM_BOT_TOKEN or TELEGRAM_GROUP_CHAT_ID');
   }
 
-  if (heliusApiKey && bot) {
+  if (isHeliusUrl(solanaRpcUrl) && bot) {
+    const wsUrl = deriveWsUrl(solanaRpcUrl);
     const monitor = new UsdcMonitor({
-      heliusApiKey,
+      wsUrl,
+      rpcUrl: solanaRpcUrl,
       agentWallet: keypair.publicKey.toBase58(),
       usdcMint: USDC_MINT,
       onInboundTransfer: async (transfer: InboundTransfer) => {
@@ -193,9 +235,9 @@ async function main(): Promise<void> {
       },
     });
     monitor.start();
-    console.log('USDC monitor started');
+    console.log(`[Boot] USDC monitor started (ws: ${wsUrl.split('?')[0]}...)`);
   } else {
-    console.log('USDC monitor skipped — missing HELIUS_API_KEY');
+    console.log('[Boot] USDC monitor skipped — non-Helius RPC URL');
   }
 
   if (birdeyeApiKey) {
@@ -206,7 +248,7 @@ async function main(): Promise<void> {
       adapter,
       birdeye,
       jupiter,
-      llm,
+      llmRouter,
       connection,
       cacheWriter,
     });
@@ -219,35 +261,27 @@ async function main(): Promise<void> {
   if (bot) {
     const ticker = new AuctionTicker({ db, adapter, bot, cacheWriter });
     ticker.start();
-    if (secretAiKey) {
-      const scheduler = new AuctionScheduler({ db, adapter, llm, bot, cacheWriter });
-      scheduler.start();
-      console.log('Auction ticker + scheduler started');
+    const scheduler = new AuctionScheduler({ db, adapter, llmRouter, bot, cacheWriter });
+    scheduler.start();
+    console.log('Auction ticker + scheduler started');
 
-      const coingeckoApiKey = process.env.COINGECKO_API_KEY;
-      let market: MarketContext | undefined;
-      if (coingeckoApiKey) {
-        market = new MarketContext({ coingeckoApiKey });
-        await market.start();
-      } else {
-        console.log('MarketContext skipped — missing COINGECKO_API_KEY');
-      }
-
-      const activityIntervalMs = Number(
-        process.env.GROUP_ACTIVITY_INTERVAL_MS ?? 30 * 60 * 1000,
-      );
-      const groupActivity = new GroupActivityLoop({
-        db,
-        adapter,
-        llm,
-        bot,
-        market,
-        intervalMs: activityIntervalMs,
-      });
-      groupActivity.start();
+    let market: MarketContext | undefined;
+    if (coingeckoApiKey) {
+      market = new MarketContext({ coingeckoApiKey });
+      await market.start();
     } else {
-      console.log('Auction ticker started, scheduler skipped — missing SECRET_AI_API_KEY');
+      console.log('MarketContext skipped — missing COINGECKO_API_KEY');
     }
+
+    const groupActivity = new GroupActivityLoop({
+      db,
+      adapter,
+      llmRouter,
+      bot,
+      market,
+      intervalMs: groupActivityIntervalMs,
+    });
+    groupActivity.start();
   }
 
   setInterval(async () => {

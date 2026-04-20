@@ -1,7 +1,7 @@
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
 import type { PanthersBot } from '../telegram/bot.js';
-import type { LLMClient } from '../llm/client.js';
+import type { LLMRouter } from '../llm/router.js';
 import type { PublicCacheWriter } from '../public/cache.js';
 import type { AuctionRecord, PanthersState } from '../state/schema.js';
 import { decideAuctionType } from '../llm/tasks.js';
@@ -15,7 +15,7 @@ const MILESTONES = [10, 25, 50];
 export interface AuctionSchedulerParams {
   db: PanthersDb;
   adapter: PanthersStateAdapter;
-  llm: LLMClient;
+  llmRouter: LLMRouter;
   bot: PanthersBot;
   cacheWriter: PublicCacheWriter;
   intervalMs?: number;
@@ -45,7 +45,7 @@ export class AuctionScheduler {
   async scheduleAuction(scheduledAt: number): Promise<AuctionRecord> {
     const state = await this.params.db.loadState(this.params.adapter);
     const decision = await decideAuctionType(
-      this.params.llm,
+      this.params.llmRouter.for('auction'),
       state.signals,
       Object.keys(state.nfts).length,
     );
@@ -113,7 +113,7 @@ export class AuctionScheduler {
     if (triggerReason === null) return;
 
     const decision = await decideAuctionType(
-      this.params.llm,
+      this.params.llmRouter.for('auction'),
       state.signals,
       Object.keys(state.nfts).length,
     );

@@ -15,7 +15,7 @@ import {
 import type { Umi } from '@metaplex-foundation/umi';
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
-import type { LLMClient } from '../llm/client.js';
+import type { LLMRouter } from '../llm/router.js';
 import type {
   AuctionRecord,
   Bid,
@@ -70,7 +70,7 @@ interface AwaitingRedemptionVerification {
 export interface PanthersBotParams {
   token: string;
   groupChatId: number | string;
-  llm: LLMClient;
+  llmRouter: LLMRouter;
   db: PanthersDb;
   adapter: PanthersStateAdapter;
   umi: Umi;
@@ -257,7 +257,7 @@ export class PanthersBot {
     if (await this.tryReplyToMention(ctx, text, userName)) return;
 
     try {
-      const intent = await detectBuyIntent(this.params.llm, text, userName);
+      const intent = await detectBuyIntent(this.params.llmRouter.for('buy_intent'), text, userName);
       console.log(
         `detectBuyIntent: user=${userName} hasBuyIntent=${intent.hasBuyIntent} confidence=${intent.confidence}`,
       );
@@ -295,7 +295,7 @@ export class PanthersBot {
     try {
       const state = await this.params.db.loadState(this.params.adapter);
       const result = await generateGroupReply(
-        this.params.llm,
+        this.params.llmRouter.for('chat'),
         text,
         userName,
         this.getRecentMessages(),
@@ -375,7 +375,7 @@ export class PanthersBot {
     let decision;
     try {
       decision = await decideAuctionType(
-        this.params.llm,
+        this.params.llmRouter.for('auction'),
         state.signals,
         availableNftCount,
       );
@@ -443,7 +443,7 @@ export class PanthersBot {
     let result;
     try {
       result = await generateHaggleResponse(
-        this.params.llm,
+        this.params.llmRouter.for('haggle'),
         withUserOffer,
         state.signals,
       );
@@ -540,7 +540,7 @@ export class PanthersBot {
   private async runSentiment(): Promise<void> {
     if (this.messageBuffer.length === 0) return;
     try {
-      const result = await scoreSentiment(this.params.llm, [
+      const result = await scoreSentiment(this.params.llmRouter.for('sentiment'), [
         ...this.messageBuffer,
       ]);
       const state = await this.params.db.loadState(this.params.adapter);

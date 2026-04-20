@@ -1,6 +1,6 @@
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
-import type { LLMClient } from '../llm/client.js';
+import type { LLMRouter } from '../llm/router.js';
 import type { PanthersBot } from './bot.js';
 import {
   decideAndGeneratePost,
@@ -14,7 +14,7 @@ const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
 export interface GroupActivityLoopParams {
   db: PanthersDb;
   adapter: PanthersStateAdapter;
-  llm: LLMClient;
+  llmRouter: LLMRouter;
   bot: PanthersBot;
   market?: MarketContext;
   intervalMs?: number;
@@ -76,7 +76,7 @@ export class GroupActivityLoop {
     const market = this.buildMarketSummary();
 
     const decision = await decideAndGeneratePost(
-      this.params.llm,
+      this.params.llmRouter.for('news_summary'),
       state.signals,
       recentMessages,
       {
