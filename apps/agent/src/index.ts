@@ -21,6 +21,7 @@ import { executeP2pSale } from './auction/p2p.js';
 import { GroupActivityLoop } from './telegram/group-activity.js';
 import { MarketContext } from './trading/market-context.js';
 import { deriveWsUrl, isHeliusUrl } from './solana/rpc.js';
+import { runDevnetSelfTest } from './devnet-self-test.js';
 
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const STALE_SALE_INTERVAL_MS = 5 * 60 * 1000;
@@ -134,6 +135,11 @@ async function main(): Promise<void> {
     },
   ));
 
+  const agentPublicUrl = db.config.get(CONFIG.AGENT_PUBLIC_URL, {
+    envKey: 'AGENT_PUBLIC_URL',
+    defaultValue: '',
+  }) || '';
+
   const llmRouter = new LLMRouter(secretAiKey, secretAiBaseUrl, db.config);
   console.log(`[Boot] Config loaded. SecretAI base: ${secretAiBaseUrl}`);
 
@@ -202,6 +208,7 @@ async function main(): Promise<void> {
               buyerWallet: match.buyerWallet,
               agreedPriceUsdc: transfer.amountUsdc,
               txSignature: transfer.txSignature,
+              agentPublicUrl,
             });
             const updatedState = await db.loadState(adapter);
             const nft = updatedState.nfts[result.newTokenId];
@@ -225,6 +232,7 @@ async function main(): Promise<void> {
             confirmedAmountUsdc: transfer.amountUsdc,
             txSignature: transfer.txSignature,
             cacheWriter,
+            agentPublicUrl,
           });
           const updatedState = await db.loadState(adapter);
           const nft = updatedState.nfts[result.tokenId];
@@ -303,6 +311,11 @@ async function main(): Promise<void> {
   }, STALE_SALE_INTERVAL_MS);
 
   console.log('Panthers agent initialized');
+
+  runDevnetSelfTest({
+    db, adapter, umi, connection, keypair,
+    rpcUrl: solanaRpcUrl, cacheWriter, agentPublicUrl, bot,
+  }).catch((err) => console.error('[SelfTest] Failed:', err));
 }
 
 main().catch((err) => {

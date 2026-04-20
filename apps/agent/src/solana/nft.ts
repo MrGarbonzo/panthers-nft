@@ -16,13 +16,14 @@ export async function mintPanthersNft(params: {
   tokenId: string;
   nftIndex: number;
   rpcUrl: string;
+  metadataUri?: string;
 }): Promise<string> {
   const mint = generateSigner(params.umi);
   await createNft(params.umi, {
     mint,
     name: `Panthers Fund #${params.nftIndex}`,
     symbol: 'PANTH',
-    uri: '',
+    uri: params.metadataUri ?? '',
     sellerFeeBasisPoints: percentAmount(0),
     isMutable: true,
     tokenOwner: publicKey(params.recipientWallet),

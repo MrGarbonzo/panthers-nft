@@ -72,6 +72,7 @@ export async function executeP2pSale(params: {
   buyerWallet: string;
   agreedPriceUsdc: number;
   txSignature: string;
+  agentPublicUrl?: string;
 }): Promise<{ newTokenId: string; mintAddress: string }> {
   const state = await params.db.loadState(params.adapter);
   const listing = state.p2pListings[params.listingId];
@@ -92,12 +93,16 @@ export async function executeP2pSale(params: {
 
   const newTokenId = uuidv4();
   const newNftIndex = nft.nftIndex;
+  const metadataUri = params.agentPublicUrl
+    ? `${params.agentPublicUrl}/metadata/${newTokenId}`
+    : undefined;
   const mintAddress = await mintPanthersNft({
     umi: params.umi,
     recipientWallet: params.agentKeypair.publicKey.toBase58(),
     tokenId: newTokenId,
     nftIndex: newNftIndex,
     rpcUrl: '',
+    metadataUri,
   });
 
   const sellerPubkey = new PublicKey(listing.sellerWallet);

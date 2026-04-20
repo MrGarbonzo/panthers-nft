@@ -16,6 +16,7 @@ export async function completeSale(params: {
   confirmedAmountUsdc: number;
   txSignature: string;
   cacheWriter?: PublicCacheWriter;
+  agentPublicUrl?: string;
 }): Promise<{ mintAddress: string; tokenId: string }> {
   const state = await params.db.loadState(params.adapter);
 
@@ -32,12 +33,17 @@ export async function completeSale(params: {
   const tokenId = uuidv4();
   const nftIndex = Object.keys(state.nfts).length + 1;
 
+  const metadataUri = params.agentPublicUrl
+    ? `${params.agentPublicUrl}/metadata/${tokenId}`
+    : undefined;
+
   const mintAddress = await mintPanthersNft({
     umi: params.umi,
     recipientWallet: pendingSale.buyerWallet,
     tokenId,
     nftIndex,
     rpcUrl: params.rpcUrl,
+    metadataUri,
   });
 
   const nftRecord: NftRecord = {
