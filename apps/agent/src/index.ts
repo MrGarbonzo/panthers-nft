@@ -7,6 +7,7 @@ import { PanthersStateAdapter } from './state/adapter.js';
 import { initializeSolanaWallet } from './solana/wallet.js';
 import { initializeUmi } from './solana/umi-client.js';
 import { UsdcMonitor, type InboundTransfer } from './solana/monitor.js';
+import { NftMonitor } from './solana/nft-monitor.js';
 import { completeSale } from './solana/deposit.js';
 import { LLMRouter } from './llm/router.js';
 import { PanthersBot } from './telegram/bot.js';
@@ -21,7 +22,14 @@ import { executeP2pSale } from './auction/p2p.js';
 import { GroupActivityLoop } from './telegram/group-activity.js';
 import { MarketContext } from './trading/market-context.js';
 import { deriveWsUrl, isHeliusUrl } from './solana/rpc.js';
-import { runDevnetSelfTest } from './devnet-self-test.js';
+import { PersonaEngine } from './persona/engine.js';
+import { WalletMonitor } from './persona/wallet-monitor.js';
+import { PersonaContextProvider } from './persona/context-provider.js';
+import { burnPanthersNft } from './solana/nft.js';
+import { recalculateAllNavs } from './state/nav.js';
+import type { PanthersState } from './state/schema.js';
+import { XClient } from './social/x-client.js';
+import { XPostingLoop } from './social/x-posting-loop.js';
 
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const STALE_SALE_INTERVAL_MS = 5 * 60 * 1000;
@@ -67,6 +75,10 @@ async function main(): Promise<void> {
     defaultValue: '3000',
   }));
 
+  const firstBootAt = Number(db.config.get(CONFIG.FIRST_BOOT_AT, {
+    defaultValue: String(Date.now()),
+  }));
+
   const cacheWriter = new PublicCacheWriter(publicCachePath);
   const state = await db.loadState(adapter);
   await cacheWriter.write(state).catch((err) =>
@@ -91,6 +103,8 @@ async function main(): Promise<void> {
     devMode,
     startedAt: Date.now(),
     nftImagesDir,
+    storageBackend,
+    solanaWalletAddress: keypair.publicKey.toBase58(),
   });
   publicServer.start();
 
@@ -120,10 +134,6 @@ async function main(): Promise<void> {
     required: true,
   })!;
 
-  const birdeyeApiKey = db.config.get(CONFIG.BIRDEYE_API_KEY, {
-    envKey: 'BIRDEYE_API_KEY',
-  });
-
   const coingeckoApiKey = db.config.get(CONFIG.COINGECKO_API_KEY, {
     envKey: 'COINGECKO_API_KEY',
   });
@@ -137,11 +147,36 @@ async function main(): Promise<void> {
 
   const agentPublicUrl = db.config.get(CONFIG.AGENT_PUBLIC_URL, {
     envKey: 'AGENT_PUBLIC_URL',
-    defaultValue: '',
   }) || '';
+  if (!agentPublicUrl) {
+    console.warn('[Boot] AGENT_PUBLIC_URL not set — NFT metadata URIs will be empty');
+  }
+
+  const dailyBurnRate = Number(db.config.get(CONFIG.DAILY_BURN_RATE_USDC, {
+    envKey: 'DAILY_BURN_RATE_USDC',
+    defaultValue: '2.0',
+  }));
 
   const llmRouter = new LLMRouter(secretAiKey, secretAiBaseUrl, db.config);
+  const personaEngine = new PersonaEngine();
+  llmRouter.setPersona(personaEngine);
   console.log(`[Boot] Config loaded. SecretAI base: ${secretAiBaseUrl}`);
+
+  const walletMonitor = new WalletMonitor({
+    connection,
+    agentWallet: keypair.publicKey.toBase58(),
+    usdcMintSolana: USDC_MINT,
+  });
+  await walletMonitor.start();
+
+  const personaCtx = new PersonaContextProvider({
+    db,
+    adapter,
+    walletMonitor,
+    dailyBurnRate: dailyBurnRate,
+    firstBootAt,
+    agentWallet: keypair.publicKey.toBase58(),
+  });
 
   let bot: PanthersBot | null = null;
   if (telegramToken && telegramGroupChatId) {
@@ -149,6 +184,7 @@ async function main(): Promise<void> {
       token: telegramToken,
       groupChatId: telegramGroupChatId,
       llmRouter,
+      personaCtx,
       db,
       adapter,
       umi,
@@ -173,9 +209,26 @@ async function main(): Promise<void> {
         const match =
           memo !== null ? currentState.pendingSales[memo] : undefined;
         if (!match) {
+          const amount = transfer.amountUsdc;
           console.log(
-            `Unmatched USDC transfer: ${transfer.txSignature} amount=${transfer.amountUsdc} memo=${memo ?? 'none'}`,
+            `Unmatched USDC transfer: ${transfer.txSignature} amount=${amount} memo=${memo ?? 'none'}`,
           );
+          const updated: PanthersState = {
+            ...currentState,
+            personalFund: {
+              ...currentState.personalFund,
+              totalDonationsUsdc:
+                currentState.personalFund.totalDonationsUsdc + amount,
+              lastUpdatedAt: Date.now(),
+            },
+          };
+          await db.saveState(updated, adapter, cacheWriter);
+          const daysExtended = dailyBurnRate > 0 ? amount / dailyBurnRate : 0;
+          if (bot) {
+            const msg = `Someone sent ${amount.toFixed(2)} USDC. That is ${daysExtended.toFixed(1)} more days.${amount >= 50 ? ' Thank you.' : ' Noted.'}`;
+            await bot.sendGroupMessage(msg).catch(() => {});
+          }
+          void xPostingLoop?.onEvent('donation_received', `${amount.toFixed(2)} USDC received`);
           return;
         }
         if (match.status !== 'awaiting_payment') {
@@ -213,7 +266,7 @@ async function main(): Promise<void> {
             const updatedState = await db.loadState(adapter);
             const nft = updatedState.nfts[result.newTokenId];
             await bot!.sendGroupMessage(
-              `Panthers Fund #${nft?.nftIndex ?? '?'} sold P2P. 🤝`,
+              `Panthers Fund #${nft?.nftIndex ?? '?'} sold P2P.`,
             );
             console.log(`P2P sale complete: newTokenId=${result.newTokenId}`);
           } catch (err) {
@@ -237,7 +290,7 @@ async function main(): Promise<void> {
           const updatedState = await db.loadState(adapter);
           const nft = updatedState.nfts[result.tokenId];
           await bot!.sendGroupMessage(
-            `Panthers Fund #${nft?.nftIndex ?? '?'} minted to new owner. 🐆`,
+            `Panthers Fund #${nft?.nftIndex ?? '?'} minted to new owner.`,
           );
           console.log(
             `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress}`,
@@ -253,28 +306,158 @@ async function main(): Promise<void> {
     console.log('[Boot] USDC monitor skipped — non-Helius RPC URL');
   }
 
-  if (birdeyeApiKey) {
-    const birdeye = new BirdeyeClient(birdeyeApiKey);
-    const jupiter = new JupiterClient(connection, keypair);
-    const tradingLoop = new TradingLoop({
-      db,
-      adapter,
-      birdeye,
-      jupiter,
-      llmRouter,
-      connection,
-      cacheWriter,
-    });
-    tradingLoop.start();
-    console.log('Trading loop started');
-  } else {
-    console.log('Trading loop skipped — missing BIRDEYE_API_KEY');
+  const nftMonitor = new NftMonitor({
+    rpcUrl: solanaRpcUrl,
+    agentWallet: keypair.publicKey.toBase58(),
+    onInboundNft: async ({ mintAddress, fromWallet, txSignature }) => {
+      const currentState = await db.loadState(adapter);
+      const nft = Object.values(currentState.nfts).find(
+        (n) => n.mintAddress === mintAddress,
+      );
+      if (!nft || nft.custodyMode !== 'self') {
+        console.log(`[NftMonitor] Unmatched NFT inbound: ${mintAddress}`);
+        return;
+      }
+      const feePct = currentState.agentConfig.feePctOnBurn;
+      const feesUsdc = nft.currentNav * feePct;
+      const withdrawnUsdc = nft.currentNav - feesUsdc;
+
+      try {
+        await burnPanthersNft({
+          umi,
+          mintAddress: nft.mintAddress,
+          ownerWallet: keypair.publicKey.toBase58(),
+        });
+      } catch (err) {
+        console.error(`[NftMonitor] Burn failed for ${mintAddress}:`, err);
+        return;
+      }
+
+      const { [nft.tokenId]: _removed, ...remainingNfts } = currentState.nfts;
+      void _removed;
+
+      let nextState: PanthersState = {
+        ...currentState,
+        nfts: remainingNfts,
+        pool: {
+          ...currentState.pool,
+          totalUsdcDeposited: currentState.pool.totalUsdcDeposited - nft.usdcDeposited,
+          totalUsdcCurrentValue: currentState.pool.totalUsdcCurrentValue - nft.currentNav,
+        },
+        personalFund: {
+          ...currentState.personalFund,
+          totalFeesCollectedUsdc: currentState.personalFund.totalFeesCollectedUsdc + feesUsdc,
+          lastUpdatedAt: Date.now(),
+        },
+      };
+      nextState = recalculateAllNavs(nextState);
+      await db.saveState(nextState, adapter, cacheWriter);
+
+      console.log(
+        `[NftMonitor] Redemption: burned ${mintAddress}, sending ${withdrawnUsdc.toFixed(2)} USDC to ${fromWallet}`,
+      );
+
+      try {
+        const { processWithdrawal: _ } = await import('./solana/withdraw.js');
+        void _;
+        const { PublicKey: PK } = await import('@solana/web3.js');
+        const {
+          createTransferInstruction: cti,
+          getAssociatedTokenAddress: gata,
+          getOrCreateAssociatedTokenAccount: gocata,
+        } = await import('@solana/spl-token');
+        const { Transaction: Tx, sendAndConfirmTransaction: sact } =
+          await import('@solana/web3.js');
+
+        const usdcMint = new PK(USDC_MINT);
+        const sourceAta = await gata(usdcMint, keypair.publicKey);
+        const destAta = await gocata(connection, keypair, usdcMint, new PK(fromWallet));
+        const atomicAmount = BigInt(Math.floor(withdrawnUsdc * 1_000_000));
+        const tx = new Tx().add(
+          cti(sourceAta, destAta.address, keypair.publicKey, atomicAmount),
+        );
+        await sact(connection, tx, [keypair]);
+        console.log(`[NftMonitor] Sent ${withdrawnUsdc.toFixed(2)} USDC to ${fromWallet}`);
+      } catch (err) {
+        console.error(`[NftMonitor] USDC transfer failed:`, err);
+      }
+
+      if (bot) {
+        await bot.sendGroupMessage(
+          `Panthers Fund #${nft.nftIndex} redeemed. ${withdrawnUsdc.toFixed(2)} USDC returned.`,
+        ).catch(() => {});
+      }
+    },
+  });
+  for (const nft of Object.values(state.nfts)) {
+    if (nft.custodyMode === 'agent') nftMonitor.seedKnownMint(nft.mintAddress);
   }
+  nftMonitor.start();
+
+  const onBirdeyeSpend = async (amountUsdc: number) => {
+    try {
+      const s = await db.loadState(adapter);
+      const updated: PanthersState = {
+        ...s,
+        personalFund: {
+          ...s.personalFund,
+          totalInfraSpendSolanaUsdc:
+            s.personalFund.totalInfraSpendSolanaUsdc + amountUsdc,
+          lastUpdatedAt: Date.now(),
+        },
+      };
+      await db.saveState(updated, adapter, cacheWriter);
+    } catch {}
+  };
+
+  const birdeye = new BirdeyeClient({
+    keypair,
+    connection,
+    onSpend: (amount) => void onBirdeyeSpend(amount),
+  });
+  const jupiter = new JupiterClient(connection, keypair);
+  const xApiKey = db.config.get(CONFIG.X_API_KEY, { envKey: 'X_API_KEY' });
+  const xApiSecret = db.config.get(CONFIG.X_API_SECRET, { envKey: 'X_API_SECRET' });
+  const xAccessToken = db.config.get(CONFIG.X_ACCESS_TOKEN, { envKey: 'X_ACCESS_TOKEN' });
+  const xAccessTokenSecret = db.config.get(CONFIG.X_ACCESS_TOKEN_SECRET, { envKey: 'X_ACCESS_TOKEN_SECRET' });
+
+  let xPostingLoop: XPostingLoop | null = null;
+  if (xApiKey && xApiSecret && xAccessToken && xAccessTokenSecret) {
+    const xClient = new XClient({
+      apiKey: xApiKey,
+      apiSecret: xApiSecret,
+      accessToken: xAccessToken,
+      accessTokenSecret: xAccessTokenSecret,
+    });
+    xPostingLoop = new XPostingLoop({
+      xClient,
+      llmRouter,
+      personaCtx,
+    });
+    setInterval(() => void xPostingLoop!.checkDailySurvival(), 6 * 60 * 60 * 1000);
+    console.log('[Boot] X posting loop initialized');
+  } else {
+    console.log('[Boot] X posting skipped — credentials not configured');
+  }
+
+  const tradingLoop = new TradingLoop({
+    db,
+    adapter,
+    birdeye,
+    jupiter,
+    llmRouter,
+    connection,
+    cacheWriter,
+    personaCtx,
+    onTradeExecuted: (context) => void xPostingLoop?.onEvent('trade_executed', context),
+  });
+  tradingLoop.start();
+  console.log('Trading loop started');
 
   if (bot) {
     const ticker = new AuctionTicker({ db, adapter, bot, cacheWriter });
     ticker.start();
-    const scheduler = new AuctionScheduler({ db, adapter, llmRouter, bot, cacheWriter });
+    const scheduler = new AuctionScheduler({ db, adapter, llmRouter, bot, cacheWriter, personaCtx });
     scheduler.start();
     console.log('Auction ticker + scheduler started');
 
@@ -293,6 +476,8 @@ async function main(): Promise<void> {
       bot,
       market,
       intervalMs: groupActivityIntervalMs,
+      personaCtx,
+      onSurvivalPost: (text) => void xPostingLoop?.mirrorSurvivalPost(text),
     });
     groupActivity.start();
   }
@@ -303,7 +488,6 @@ async function main(): Promise<void> {
       const next = db.expireStalePendingSales(current);
       if (next !== current) {
         await db.saveState(next, adapter, cacheWriter);
-        console.log('Expired stale pending sales');
       }
     } catch (err) {
       console.error('expireStalePendingSales failed:', err);
@@ -311,11 +495,6 @@ async function main(): Promise<void> {
   }, STALE_SALE_INTERVAL_MS);
 
   console.log('Panthers agent initialized');
-
-  runDevnetSelfTest({
-    db, adapter, umi, connection, keypair,
-    rpcUrl: solanaRpcUrl, cacheWriter, agentPublicUrl, bot,
-  }).catch((err) => console.error('[SelfTest] Failed:', err));
 }
 
 main().catch((err) => {

@@ -14,12 +14,27 @@ try {
   console.warn('[Server] index.html not found in dist/');
 }
 
+const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500">
+  <rect width="500" height="500" fill="#0A0A0A"/>
+  <rect x="10" y="10" width="480" height="480" fill="none" stroke="#E8780E" stroke-width="2"/>
+  <ellipse cx="250" cy="200" rx="80" ry="90" fill="#1A1A1A" stroke="#E8780E" stroke-width="1.5"/>
+  <ellipse cx="250" cy="340" rx="60" ry="80" fill="#1A1A1A" stroke="#E8780E" stroke-width="1.5"/>
+  <polygon points="195,140 175,100 215,130" fill="#1A1A1A" stroke="#E8780E" stroke-width="1.5"/>
+  <polygon points="305,140 325,100 285,130" fill="#1A1A1A" stroke="#E8780E" stroke-width="1.5"/>
+  <ellipse cx="225" cy="195" rx="10" ry="8" fill="#E8780E"/>
+  <ellipse cx="275" cy="195" rx="10" ry="8" fill="#E8780E"/>
+  <text x="250" y="440" font-family="monospace" font-size="14" fill="#555555" text-anchor="middle">PANTHERS FUND</text>
+  <text x="250" y="460" font-family="monospace" font-size="11" fill="#333333" text-anchor="middle">AUTONOMOUS AI TRADING</text>
+</svg>`;
+
 export interface PublicBalanceServerParams {
   cacheWriter: PublicCacheWriter;
   port?: number;
   devMode?: boolean;
   startedAt?: number;
   nftImagesDir?: string;
+  storageBackend?: string;
+  solanaWalletAddress?: string;
 }
 
 const DEFAULT_PORT = 3000;
@@ -30,12 +45,16 @@ export class PublicBalanceServer {
   private readonly startedAt: number;
   private readonly devMode: boolean;
   private readonly nftImagesDir: string;
+  private readonly storageBackend: string;
+  private readonly solanaWalletAddress: string;
 
   constructor(private readonly params: PublicBalanceServerParams) {
     this.port = params.port ?? DEFAULT_PORT;
     this.startedAt = params.startedAt ?? Date.now();
     this.devMode = params.devMode ?? false;
     this.nftImagesDir = params.nftImagesDir ?? '/data/nft-images';
+    this.storageBackend = params.storageBackend ?? 'simple';
+    this.solanaWalletAddress = params.solanaWalletAddress ?? '';
   }
 
   start(): void {
@@ -100,6 +119,9 @@ export class PublicBalanceServer {
           nftCount: cache?.fundSummary.totalNftCount ?? 0,
           poolValueUsdc: cache?.fundSummary.totalPoolValueUsdc ?? 0,
           devMode: this.devMode,
+          storageBackend: this.storageBackend,
+          solanaWalletAddress: this.solanaWalletAddress,
+          personalFund: cache?.stats?.personalFund ?? null,
           timestamp: Date.now(),
         });
         return;
@@ -160,8 +182,10 @@ export class PublicBalanceServer {
           createReadStream(servePath).pipe(res);
           return;
         }
-        status = 404;
-        this.respondJson(res, status, { error: 'Image not found' });
+        res.setHeader('Content-Type', 'image/svg+xml');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.statusCode = 200;
+        res.end(PLACEHOLDER_SVG);
         return;
       }
 

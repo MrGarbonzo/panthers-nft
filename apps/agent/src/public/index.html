@@ -424,6 +424,7 @@ body {
 <nav class="tab-nav">
   <button class="tab-btn active" data-tab="fund">FUND</button>
   <button class="tab-btn" data-tab="collection">COLLECTION</button>
+  <button class="tab-btn" data-tab="agent">AGENT</button>
 </nav>
 
 <main class="content">
@@ -459,6 +460,25 @@ body {
       <div class="skeleton skeleton-card"></div>
     </div>
   </div>
+
+  <!-- AGENT TAB -->
+  <div class="tab-content" id="tab-agent">
+    <div class="stat-bar" id="agent-stat-bar">
+      <div class="stat-card skeleton skeleton-stat"></div>
+      <div class="stat-card skeleton skeleton-stat"></div>
+      <div class="stat-card skeleton skeleton-stat"></div>
+    </div>
+    <div class="columns" id="agent-columns">
+      <div>
+        <div class="col-header">PERSONAL FUND</div>
+        <div id="personal-fund"><div class="skeleton skeleton-row"></div></div>
+      </div>
+      <div>
+        <div class="col-header">INFRASTRUCTURE</div>
+        <div id="infra-status"><div class="skeleton skeleton-row"></div></div>
+      </div>
+    </div>
+  </div>
 </main>
 
 <footer class="footer">PANTHERS FUND &middot; AUTONOMOUS AI TRADING &middot; POWERED BY SECRET NETWORK</footer>
@@ -466,6 +486,7 @@ body {
 <script>
 let allNfts = [];
 let stats = null;
+let health = null;
 let hasError = false;
 
 const $ = id => document.getElementById(id);
@@ -506,17 +527,20 @@ $('search').addEventListener('input', e => {
 
 async function fetchAll() {
   try {
-    const [statsRes, nftsRes] = await Promise.all([
+    const [statsRes, nftsRes, healthRes] = await Promise.all([
       fetch('/stats'),
       fetch('/nfts'),
+      fetch('/health'),
     ]);
     if (!statsRes.ok || !nftsRes.ok) throw new Error('API error');
     stats = await statsRes.json();
     allNfts = await nftsRes.json();
+    if (healthRes.ok) health = await healthRes.json();
     hasError = false;
     $('error-banner').classList.remove('visible');
     renderFund();
     renderNfts();
+    renderAgent();
     $('last-updated').textContent = timeAgo(stats.lastUpdatedAt);
   } catch (e) {
     console.error('Fetch failed:', e);
@@ -662,6 +686,97 @@ function renderNfts(filter) {
       </div>
     `;
   }).join('');
+}
+
+function formatUptime(seconds) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm';
+}
+
+function renderAgent() {
+  if (!health) return;
+  const wallet = health.solanaWalletAddress || '';
+  const explorerUrl = 'https://explorer.solana.com/address/' + wallet;
+  const uptime = health.uptime || 0;
+  const daysOnline = Math.floor(uptime / 86400);
+
+  $('agent-stat-bar').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">UPTIME</div>
+      <div class="stat-value">${formatUptime(uptime)}</div>
+      <div class="stat-sub">Since Last Boot</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">AGENT WALLET</div>
+      <div class="stat-value" style="font-size:18px"><a href="${explorerUrl}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none">${truncateMint(wallet)}</a></div>
+      <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:11px">${wallet}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">DAYS ONLINE</div>
+      <div class="stat-value">${daysOnline}</div>
+      <div class="stat-sub">Continuous Operation</div>
+    </div>
+  `;
+
+  const pf = stats?.personalFund || health.personalFund || {};
+  const fees = pf.totalFeesCollectedUsdc || 0;
+  const donations = pf.totalDonationsUsdc || 0;
+  const spendSol = pf.totalInfraSpendSolanaUsdc || 0;
+  const spendBase = pf.totalInfraSpendBaseUsdc || 0;
+  const net = fees + donations - spendSol - spendBase;
+
+  $('personal-fund').innerHTML = `
+    <div style="display:grid;gap:12px">
+      <div class="stat-card" style="padding:12px 16px">
+        <div class="stat-label">TOTAL FEES EARNED</div>
+        <div class="stat-value" style="font-size:24px;color:var(--gain)">${formatUSD(fees)}</div>
+      </div>
+      <div class="stat-card" style="padding:12px 16px">
+        <div class="stat-label">TOTAL DONATIONS</div>
+        <div class="stat-value" style="font-size:24px">${formatUSD(donations)}</div>
+      </div>
+      <div class="stat-card" style="padding:12px 16px">
+        <div class="stat-label">INFRA SPEND (SOLANA)</div>
+        <div class="stat-value" style="font-size:24px;color:var(--loss)">${formatUSD(spendSol)}</div>
+      </div>
+      <div class="stat-card" style="padding:12px 16px">
+        <div class="stat-label">INFRA SPEND (BASE)</div>
+        <div class="stat-value" style="font-size:24px;color:var(--loss)">${formatUSD(spendBase)}</div>
+      </div>
+      <div class="stat-card" style="padding:12px 16px;border-color:var(--orange)">
+        <div class="stat-label">NET OPERATING</div>
+        <div class="stat-value" style="font-size:28px;color:${net >= 0 ? 'var(--gain)' : 'var(--loss)'}">${formatUSD(net)}</div>
+      </div>
+    </div>
+  `;
+
+  const storage = health.storageBackend === 'idiostasis' ? 'IDIOSTASIS' : 'SIMPLE';
+  const storageColor = health.storageBackend === 'idiostasis' ? 'var(--gain)' : 'var(--muted)';
+
+  $('infra-status').innerHTML = `
+    <div style="display:grid;gap:12px">
+      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">SOLANA RPC</span>
+        <span style="font-family:'Space Mono',monospace;font-size:12px;color:var(--gain)">CONNECTED</span>
+      </div>
+      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">USDC MONITOR</span>
+        <span style="font-family:'Space Mono',monospace;font-size:12px;color:var(--gain)">ACTIVE</span>
+      </div>
+      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">STORAGE</span>
+        <span style="font-family:'Space Mono',monospace;font-size:12px;color:${storageColor}">${storage}</span>
+      </div>
+      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">GUARDIAN NODES</span>
+        <span style="font-family:'Space Mono',monospace;font-size:12px;color:var(--muted)">${health.storageBackend === 'idiostasis' ? 'ACTIVE' : 'N/A'}</span>
+      </div>
+    </div>
+  `;
 }
 
 // Initial load

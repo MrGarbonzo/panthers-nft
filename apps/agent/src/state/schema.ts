@@ -1,3 +1,11 @@
+export interface PersonalFund {
+  totalFeesCollectedUsdc: number;
+  totalDonationsUsdc: number;
+  totalInfraSpendSolanaUsdc: number;
+  totalInfraSpendBaseUsdc: number;
+  lastUpdatedAt: number;
+}
+
 export interface PanthersState {
   pool: PoolState;
   nfts: Record<string, NftRecord>;
@@ -8,6 +16,7 @@ export interface PanthersState {
   p2pListings: Record<string, P2pListing>;
   signals: SignalState;
   agentConfig: AgentConfig;
+  personalFund: PersonalFund;
 }
 
 export interface P2pListing {
@@ -130,6 +139,7 @@ export interface AgentConfig {
   haggleAggressiveness: number;
   tradingStrategyActive: string;
   lastAnnouncedMilestonePct?: number;
+  lastSurvivalPostAt?: number;
 }
 
 export interface Position {
@@ -184,6 +194,13 @@ export function defaultPanthersState(): PanthersState {
       feePctOnBurn: 0.02,
       haggleAggressiveness: 0.5,
       tradingStrategyActive: 'trend_follow',
+    },
+    personalFund: {
+      totalFeesCollectedUsdc: 0,
+      totalDonationsUsdc: 0,
+      totalInfraSpendSolanaUsdc: 0,
+      totalInfraSpendBaseUsdc: 0,
+      lastUpdatedAt: 0,
     },
   };
 }

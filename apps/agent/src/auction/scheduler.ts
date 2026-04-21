@@ -12,6 +12,8 @@ const OPPORTUNISTIC_RANDOM_PCT = 0.02;
 const SENTIMENT_THRESHOLD = 0.85;
 const MILESTONES = [10, 25, 50];
 
+import type { PersonaContextProvider } from '../persona/context-provider.js';
+
 export interface AuctionSchedulerParams {
   db: PanthersDb;
   adapter: PanthersStateAdapter;
@@ -19,12 +21,22 @@ export interface AuctionSchedulerParams {
   bot: PanthersBot;
   cacheWriter: PublicCacheWriter;
   intervalMs?: number;
+  personaCtx?: PersonaContextProvider;
 }
 
 export class AuctionScheduler {
   private timer: NodeJS.Timeout | null = null;
 
   constructor(private readonly params: AuctionSchedulerParams) {}
+
+  private async llmFor(task: import('../llm/routing.js').LlmTaskType) {
+    const pCtx = this.params.personaCtx;
+    if (pCtx) {
+      const ctx = await pCtx.getSurvivalContext();
+      return this.params.llmRouter.forWithPersona(task, ctx, pCtx.agentWallet);
+    }
+    return this.params.llmRouter.for(task);
+  }
 
   start(): void {
     if (this.timer) return;
@@ -45,7 +57,7 @@ export class AuctionScheduler {
   async scheduleAuction(scheduledAt: number): Promise<AuctionRecord> {
     const state = await this.params.db.loadState(this.params.adapter);
     const decision = await decideAuctionType(
-      this.params.llmRouter.for('auction'),
+      await this.llmFor('auction'),
       state.signals,
       Object.keys(state.nfts).length,
     );
@@ -113,7 +125,7 @@ export class AuctionScheduler {
     if (triggerReason === null) return;
 
     const decision = await decideAuctionType(
-      this.params.llmRouter.for('auction'),
+      await this.llmFor('auction'),
       state.signals,
       Object.keys(state.nfts).length,
     );

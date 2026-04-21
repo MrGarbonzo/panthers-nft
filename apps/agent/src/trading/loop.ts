@@ -37,6 +37,8 @@ const MAX_TOP10_POSITIONS = 3;
 const PER_TRADE_POOL_FRACTION = 0.1;
 const MIN_LLM_LIQUIDITY_USDC = 500_000;
 
+import type { PersonaContextProvider } from '../persona/context-provider.js';
+
 export interface TradingLoopParams {
   db: PanthersDb;
   adapter: PanthersStateAdapter;
@@ -46,12 +48,23 @@ export interface TradingLoopParams {
   connection: Connection;
   cacheWriter?: PublicCacheWriter;
   intervalMs?: number;
+  personaCtx?: PersonaContextProvider;
+  onTradeExecuted?: (context: string) => void;
 }
 
 export class TradingLoop {
   private timer: NodeJS.Timeout | null = null;
 
   constructor(private readonly params: TradingLoopParams) {}
+
+  private async llmFor(task: import('../llm/routing.js').LlmTaskType) {
+    const pCtx = this.params.personaCtx;
+    if (pCtx) {
+      const ctx = await pCtx.getSurvivalContext();
+      return this.params.llmRouter.forWithPersona(task, ctx, pCtx.agentWallet);
+    }
+    return this.params.llmRouter.for(task);
+  }
 
   start(): void {
     if (this.timer) return;
@@ -239,7 +252,7 @@ export class TradingLoop {
     let nomination;
     try {
       nomination = await nominateLlmBucketToken(
-        this.params.llmRouter.for('nomination'),
+        await this.llmFor('nomination'),
         top10,
         state.pool.openPositions,
         state.signals,
@@ -336,7 +349,7 @@ export class TradingLoop {
 
     let decision: TradeDecision;
     try {
-      decision = await evaluateTradeProposal(this.params.llmRouter.for('trade'), proposal);
+      decision = await evaluateTradeProposal(await this.llmFor('trade'), proposal);
     } catch (err) {
       console.error(`${args.bucket}: evaluateTradeProposal failed:`, err);
       return state;

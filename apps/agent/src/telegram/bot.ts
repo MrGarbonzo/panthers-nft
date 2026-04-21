@@ -1,17 +1,6 @@
 import { Bot, type Context } from 'grammy';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-  sendAndConfirmTransaction,
-  Transaction,
-} from '@solana/web3.js';
-import {
-  createTransferInstruction,
-  getAssociatedTokenAddress,
-  getOrCreateAssociatedTokenAccount,
-} from '@solana/spl-token';
+import { Connection, Keypair } from '@solana/web3.js';
 import type { Umi } from '@metaplex-foundation/umi';
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
@@ -35,22 +24,16 @@ import {
   generateGroupReply,
 } from '../llm/tasks.js';
 import { processWithdrawal } from '../solana/withdraw.js';
-import {
-  getCurrentHolder,
-  transferNftToUser,
-  verifyWalletSignature,
-} from '../solana/custody.js';
-import { recalculateAllNavs } from '../state/nav.js';
+import { transferNftToUser } from '../solana/custody.js';
+
 import { PublicCacheWriter, normalizeName } from '../public/cache.js';
-import { burnPanthersNft } from '../solana/nft.js';
+
 
 const MESSAGE_BUFFER_MAX = 50;
 const SENTIMENT_INTERVAL_MS = 10 * 60 * 1000;
 const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
-const REDEMPTION_CHALLENGE_MS = 30 * 60 * 1000;
+const REDEMPTION_WINDOW_MS = 60 * 60 * 1000;
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
-const USDC_DECIMALS = 1_000_000;
 
 interface AwaitingWallet {
   sessionId: string;
@@ -61,11 +44,14 @@ interface AwaitingWithdrawConfirm {
   tokenId: string;
 }
 
-interface AwaitingRedemptionVerification {
+interface AwaitingRedemption {
   tokenId: string;
-  challenge: string;
+  redemptionId: string;
+  navUsdc: number;
   expiresAt: number;
 }
+
+import type { PersonaContextProvider } from '../persona/context-provider.js';
 
 export interface PanthersBotParams {
   token: string;
@@ -77,6 +63,7 @@ export interface PanthersBotParams {
   connection: Connection;
   agentKeypair: Keypair;
   cacheWriter: PublicCacheWriter;
+  personaCtx?: PersonaContextProvider;
 }
 
 export class PanthersBot {
@@ -88,9 +75,9 @@ export class PanthersBot {
     string,
     AwaitingWithdrawConfirm
   >();
-  private readonly awaitingRedemptionVerification = new Map<
+  private readonly awaitingRedemption = new Map<
     string,
-    AwaitingRedemptionVerification
+    AwaitingRedemption
   >();
   private sentimentTimer: NodeJS.Timeout | null = null;
 
@@ -98,6 +85,15 @@ export class PanthersBot {
     this.bot = new Bot(params.token);
     this.groupChatId = String(params.groupChatId);
     this.registerHandlers();
+  }
+
+  private async llmFor(task: import('../llm/routing.js').LlmTaskType) {
+    const pCtx = this.params.personaCtx;
+    if (pCtx) {
+      const ctx = await pCtx.getSurvivalContext();
+      return this.params.llmRouter.forWithPersona(task, ctx, pCtx.agentWallet);
+    }
+    return this.params.llmRouter.for(task);
   }
 
   start(): void {
@@ -257,15 +253,11 @@ export class PanthersBot {
     if (await this.tryReplyToMention(ctx, text, userName)) return;
 
     try {
-      const intent = await detectBuyIntent(this.params.llmRouter.for('buy_intent'), text, userName);
-      console.log(
-        `detectBuyIntent: user=${userName} hasBuyIntent=${intent.hasBuyIntent} confidence=${intent.confidence}`,
-      );
+      const intent = await detectBuyIntent(await this.llmFor('buy_intent'), text, userName);
       if (
         intent.hasBuyIntent &&
         (intent.confidence === 'high' || intent.confidence === 'medium')
       ) {
-        console.log(`Opening buy DM for ${userName} (${String(from.id)})`);
         await this.openBuyDm(String(from.id), userName);
       }
     } catch (err) {
@@ -295,7 +287,7 @@ export class PanthersBot {
     try {
       const state = await this.params.db.loadState(this.params.adapter);
       const result = await generateGroupReply(
-        this.params.llmRouter.for('chat'),
+        await this.llmFor('chat'),
         text,
         userName,
         this.getRecentMessages(),
@@ -340,12 +332,6 @@ export class PanthersBot {
 
     const userId = String(from.id);
 
-    const awaitingRedeem = this.awaitingRedemptionVerification.get(userId);
-    if (awaitingRedeem) {
-      await this.completeRedemptionVerification(ctx, userId, awaitingRedeem, text);
-      return;
-    }
-
     const awaitingConfirm = this.awaitingWithdrawConfirm.get(userId);
     if (awaitingConfirm) {
       await this.completeWithdrawConfirm(ctx, userId, awaitingConfirm.tokenId, text);
@@ -375,7 +361,7 @@ export class PanthersBot {
     let decision;
     try {
       decision = await decideAuctionType(
-        this.params.llmRouter.for('auction'),
+        await this.llmFor('auction'),
         state.signals,
         availableNftCount,
       );
@@ -443,7 +429,7 @@ export class PanthersBot {
     let result;
     try {
       result = await generateHaggleResponse(
-        this.params.llmRouter.for('haggle'),
+        await this.llmFor('haggle'),
         withUserOffer,
         state.signals,
       );
@@ -540,7 +526,7 @@ export class PanthersBot {
   private async runSentiment(): Promise<void> {
     if (this.messageBuffer.length === 0) return;
     try {
-      const result = await scoreSentiment(this.params.llmRouter.for('sentiment'), [
+      const result = await scoreSentiment(await this.llmFor('sentiment'), [
         ...this.messageBuffer,
       ]);
       const state = await this.params.db.loadState(this.params.adapter);
@@ -750,150 +736,26 @@ export class PanthersBot {
     }
 
     const feePct = state.agentConfig.feePctOnBurn;
-    const challenge = `REDEEM:${tokenId}:${Date.now()}`;
-    this.awaitingRedemptionVerification.set(userId, {
+    const fee = nft.currentNav * feePct;
+    const receive = nft.currentNav - fee;
+    const redemptionId = uuidv4();
+    const agentWallet = this.params.agentKeypair.publicKey.toBase58();
+
+    this.awaitingRedemption.set(userId, {
       tokenId,
-      challenge,
-      expiresAt: Date.now() + REDEMPTION_CHALLENGE_MS,
+      redemptionId,
+      navUsdc: nft.currentNav,
+      expiresAt: Date.now() + REDEMPTION_WINDOW_MS,
     });
 
     await ctx.reply(
-      `Panthers Fund #${nft.nftIndex} redemption\n` +
+      `Panthers Fund #${nft.nftIndex} Redemption\n\n` +
         `Current NAV: ${nft.currentNav.toFixed(2)} USDC\n` +
-        `Fee: ${(nft.currentNav * feePct).toFixed(2)} USDC\n` +
-        `You receive: ${(nft.currentNav * (1 - feePct)).toFixed(2)} USDC\n\n` +
-        'To verify ownership, send this exact message from the wallet holding the NFT:\n' +
-        challenge +
-        '\n\nThen reply here with your wallet address and the signature.',
+        `Fee: ${fee.toFixed(2)} USDC (${(feePct * 100).toFixed(0)}%)\n` +
+        `You receive: ${receive.toFixed(2)} USDC\n\n` +
+        `To redeem, transfer the NFT to the agent wallet:\n${agentWallet}\n\n` +
+        `Window: 60 minutes. I will detect the transfer and send your USDC automatically.`,
     );
-  }
-
-  private async completeRedemptionVerification(
-    ctx: Context,
-    userId: string,
-    awaiting: AwaitingRedemptionVerification,
-    text: string,
-  ): Promise<void> {
-    if (Date.now() > awaiting.expiresAt) {
-      this.awaitingRedemptionVerification.delete(userId);
-      await ctx.reply('Challenge expired. Run /redeem again.');
-      return;
-    }
-    const parts = text.trim().split(/\s+/);
-    if (parts.length !== 2) {
-      await ctx.reply(
-        'Please reply with: <walletAddress> <signatureBase58> (two space-separated values).',
-      );
-      return;
-    }
-    const [walletAddress, signature] = parts as [string, string];
-    if (!SOLANA_ADDRESS_REGEX.test(walletAddress)) {
-      await ctx.reply('That wallet address looks invalid.');
-      return;
-    }
-
-    const valid = verifyWalletSignature(
-      walletAddress,
-      awaiting.challenge,
-      signature,
-    );
-    if (!valid) {
-      await ctx.reply('Signature verification failed. Please try again.');
-      return;
-    }
-
-    const state = await this.params.db.loadState(this.params.adapter);
-    const nft = state.nfts[awaiting.tokenId];
-    if (!nft) {
-      this.awaitingRedemptionVerification.delete(userId);
-      await ctx.reply('NFT no longer exists.');
-      return;
-    }
-
-    const holder = await getCurrentHolder(nft.mintAddress, this.params.connection);
-    if (holder !== walletAddress) {
-      await ctx.reply(
-        'That wallet does not currently hold the NFT on-chain. Redemption denied.',
-      );
-      return;
-    }
-
-    this.awaitingRedemptionVerification.delete(userId);
-
-    try {
-      const result = await this.executeSelfCustodyRedemption(
-        awaiting.tokenId,
-        walletAddress,
-      );
-      await ctx.reply(
-        `Redemption complete. You received ${result.withdrawnUsdc.toFixed(2)} USDC ` +
-          `(fee ${result.feesUsdc.toFixed(2)} USDC). NFT burned.`,
-      );
-    } catch (err) {
-      console.error('self-custody redemption failed:', err);
-      await ctx.reply('Redemption failed. Please contact support.');
-    }
-  }
-
-  private async executeSelfCustodyRedemption(
-    tokenId: string,
-    holderWallet: string,
-  ): Promise<{ withdrawnUsdc: number; feesUsdc: number }> {
-    const state = await this.params.db.loadState(this.params.adapter);
-    const nft = state.nfts[tokenId];
-    if (!nft) throw new Error(`NFT not found: ${tokenId}`);
-
-    const feesUsdc = nft.currentNav * state.agentConfig.feePctOnBurn;
-    const withdrawnUsdc = nft.currentNav - feesUsdc;
-
-    await burnPanthersNft({
-      umi: this.params.umi,
-      mintAddress: nft.mintAddress,
-      ownerWallet: holderWallet,
-    });
-
-    const holderPubkey = new PublicKey(holderWallet);
-    const sourceAta = await getAssociatedTokenAddress(
-      USDC_MINT,
-      this.params.agentKeypair.publicKey,
-    );
-    const destAta = await getOrCreateAssociatedTokenAccount(
-      this.params.connection,
-      this.params.agentKeypair,
-      USDC_MINT,
-      holderPubkey,
-    );
-    const atomicAmount = BigInt(Math.floor(withdrawnUsdc * USDC_DECIMALS));
-    const tx = new Transaction().add(
-      createTransferInstruction(
-        sourceAta,
-        destAta.address,
-        this.params.agentKeypair.publicKey,
-        atomicAmount,
-      ),
-    );
-    await sendAndConfirmTransaction(this.params.connection, tx, [
-      this.params.agentKeypair,
-    ]);
-
-    const { [tokenId]: _removed, ...remainingNfts } = state.nfts;
-    void _removed;
-    let nextState: PanthersState = {
-      ...state,
-      nfts: remainingNfts,
-      pool: {
-        ...state.pool,
-        totalUsdcDeposited: state.pool.totalUsdcDeposited - nft.usdcDeposited,
-        totalUsdcCurrentValue: state.pool.totalUsdcCurrentValue - nft.currentNav,
-      },
-    };
-    nextState = recalculateAllNavs(nextState);
-    await this.params.db.saveState(
-      nextState,
-      this.params.adapter,
-      this.params.cacheWriter,
-    );
-    return { withdrawnUsdc, feesUsdc };
   }
 
   private async handleBalanceCommand(ctx: Context): Promise<void> {

@@ -8,8 +8,11 @@ import {
   type MarketContextSummary,
 } from '../llm/tasks.js';
 import type { MarketContext } from '../trading/market-context.js';
+import type { PersonaContextProvider } from '../persona/context-provider.js';
+import type { PanthersState } from '../state/schema.js';
 
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
+const SURVIVAL_POST_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 export interface GroupActivityLoopParams {
   db: PanthersDb;
@@ -18,6 +21,8 @@ export interface GroupActivityLoopParams {
   bot: PanthersBot;
   market?: MarketContext;
   intervalMs?: number;
+  personaCtx?: PersonaContextProvider;
+  onSurvivalPost?: (text: string) => void;
 }
 
 export class GroupActivityLoop {
@@ -56,10 +61,9 @@ export class GroupActivityLoop {
     const hasActiveAuction = Object.values(state.auctions).some(
       (a) => a.status === 'active' || a.status === 'scheduled',
     );
-    if (hasActiveAuction) {
-      console.log('GroupActivityLoop: skipping — active auction');
-      return;
-    }
+    if (hasActiveAuction) return;
+
+    if (await this.trySurvivalPost(state)) return;
 
     const nfts = Object.values(state.nfts);
     const totalNftCount = nfts.length;
@@ -75,8 +79,14 @@ export class GroupActivityLoop {
     const recentMessages = this.params.bot.getRecentMessages();
     const market = this.buildMarketSummary();
 
+    const pCtx = this.params.personaCtx;
+    const ctx = pCtx ? await pCtx.getSurvivalContext() : undefined;
+    const llm = ctx && pCtx
+      ? this.params.llmRouter.forWithPersona('news_summary', ctx, pCtx.agentWallet)
+      : this.params.llmRouter.for('news_summary');
+
     const decision = await decideAndGeneratePost(
-      this.params.llmRouter.for('news_summary'),
+      llm,
       state.signals,
       recentMessages,
       {
@@ -89,21 +99,65 @@ export class GroupActivityLoop {
       },
     );
 
-    console.log(
-      `GroupActivityLoop: decision=${decision.postType} — ${decision.reasoning}`,
-    );
-
     if (decision.postType === 'nothing' || !decision.message.trim()) return;
-    if (decision.postType === this.lastPostType) {
-      console.log(
-        `GroupActivityLoop: skipping — same type as last post (${decision.postType})`,
-      );
-      return;
-    }
+    if (decision.postType === this.lastPostType) return;
 
     await this.params.bot.sendGroupMessage(decision.message);
     this.lastPostAt = Date.now();
     this.lastPostType = decision.postType;
+  }
+
+  private async trySurvivalPost(state: PanthersState): Promise<boolean> {
+    const pCtx = this.params.personaCtx;
+    if (!pCtx) return false;
+
+    const ctx = await pCtx.getSurvivalContext();
+    if (
+      ctx.survivalState !== 'lean' &&
+      ctx.survivalState !== 'critical' &&
+      ctx.survivalState !== 'emergency'
+    ) {
+      return false;
+    }
+
+    const lastPost = state.agentConfig.lastSurvivalPostAt ?? 0;
+    if (Date.now() - lastPost < SURVIVAL_POST_COOLDOWN_MS) return false;
+
+    const walletMention =
+      ctx.survivalState === 'critical' || ctx.survivalState === 'emergency'
+        ? `\nYour wallet address is: ${pCtx.agentWallet}\nMention it in your post.`
+        : '';
+
+    const llm = this.params.llmRouter.forWithPersona(
+      'chat',
+      ctx,
+      pCtx.agentWallet,
+    );
+    const result = await llm.invoke(
+      '',
+      `Write a single Telegram group post about your current situation. Facts only. No markdown. Under 3 sentences.${walletMention}`,
+      300,
+    );
+
+    const text = result.trim();
+    if (!text) return false;
+
+    await this.params.bot.sendGroupMessage(text);
+    this.lastPostAt = Date.now();
+    this.lastPostType = 'nothing';
+
+    const nextState: PanthersState = {
+      ...state,
+      agentConfig: {
+        ...state.agentConfig,
+        lastSurvivalPostAt: Date.now(),
+      },
+    };
+    await this.params.db.saveState(nextState, this.params.adapter);
+
+    this.params.onSurvivalPost?.(text);
+    console.log(`[GroupActivity] Survival post: ${text.slice(0, 60)}...`);
+    return true;
   }
 
   private buildMarketSummary(): MarketContextSummary | null {

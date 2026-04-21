@@ -33,6 +33,14 @@ export interface PublicTradeRecord {
   executedAt: number;
 }
 
+export interface PublicPersonalFund {
+  totalFeesCollectedUsdc: number;
+  totalDonationsUsdc: number;
+  totalInfraSpendSolanaUsdc: number;
+  totalInfraSpendBaseUsdc: number;
+  lastUpdatedAt: number;
+}
+
 export interface PublicFundStats {
   totalPoolValueUsdc: number;
   totalUsdcDeposited: number;
@@ -49,6 +57,7 @@ export interface PublicFundStats {
   };
   openPositions: PublicPosition[];
   recentTrades: PublicTradeRecord[];
+  personalFund: PublicPersonalFund;
   lastUpdatedAt: number;
 }
 
@@ -150,6 +159,13 @@ export class PublicCacheWriter {
         },
         openPositions,
         recentTrades,
+        personalFund: {
+          totalFeesCollectedUsdc: state.personalFund.totalFeesCollectedUsdc,
+          totalDonationsUsdc: state.personalFund.totalDonationsUsdc,
+          totalInfraSpendSolanaUsdc: state.personalFund.totalInfraSpendSolanaUsdc,
+          totalInfraSpendBaseUsdc: state.personalFund.totalInfraSpendBaseUsdc,
+          lastUpdatedAt: state.personalFund.lastUpdatedAt,
+        },
         lastUpdatedAt: now,
       },
     };

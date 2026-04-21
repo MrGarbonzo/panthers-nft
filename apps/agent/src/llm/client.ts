@@ -9,7 +9,12 @@ export const SECRET_AI_MODELS = [
 
 export type SecretAIModel = (typeof SECRET_AI_MODELS)[number];
 
-export class LLMClient {
+export interface LLM {
+  invoke(systemPrompt: string, userPrompt: string, maxTokens?: number): Promise<string>;
+  invokeForJson<T>(systemPrompt: string, userPrompt: string, maxTokens?: number): Promise<T>;
+}
+
+export class LLMClient implements LLM {
   private client: OpenAI | null = null;
   private readonly resolvedModel: string;
   private readonly _baseUrl: string;

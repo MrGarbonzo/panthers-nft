@@ -168,6 +168,11 @@ export async function executeP2pSale(params: {
       ...state.p2pListings,
       [params.listingId]: { ...listing, status: 'sold' },
     },
+    personalFund: {
+      ...state.personalFund,
+      totalFeesCollectedUsdc: state.personalFund.totalFeesCollectedUsdc + feesUsdc,
+      lastUpdatedAt: now,
+    },
   };
   nextState = recalculateAllNavs(nextState);
 

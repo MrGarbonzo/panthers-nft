@@ -1,3 +1,17 @@
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  Transaction,
+  sendAndConfirmTransaction,
+} from '@solana/web3.js';
+import {
+  createTransferInstruction,
+  getAssociatedTokenAddressSync,
+  getOrCreateAssociatedTokenAccount,
+} from '@solana/spl-token';
+import { v4 as uuidv4 } from 'uuid';
+
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
@@ -25,17 +39,51 @@ interface BirdeyeEnvelope<T> {
   data?: T;
 }
 
+interface X402PaymentRequired {
+  x402Version: number;
+  accepts: Array<{
+    scheme: string;
+    network: string;
+    amount: string;
+    asset: string;
+    payTo: string;
+    maxTimeoutSeconds: number;
+    extra?: { feePayer?: string };
+  }>;
+}
+
+export interface BirdeyeClientParams {
+  keypair: Keypair;
+  connection: Connection;
+  onSpend?: (amountUsdc: number) => void;
+}
+
 export class BirdeyeClient {
-  constructor(private readonly apiKey: string) {}
+  private readonly keypair: Keypair;
+  private readonly connection: Connection;
+  private readonly onSpend: (amountUsdc: number) => void;
+
+  constructor(params: BirdeyeClientParams) {
+    this.keypair = params.keypair;
+    this.connection = params.connection;
+    this.onSpend = params.onSpend ?? (() => {});
+  }
 
   private async request<T>(path: string): Promise<T> {
-    const res = await fetch(`${BASE_URL}${path}`, {
-      headers: {
-        'X-API-Key': this.apiKey,
-        'x-chain': 'solana',
-        accept: 'application/json',
-      },
+    const url = `${BASE_URL}/x402${path}`;
+    const res = await fetch(url, {
+      headers: { 'x-chain': 'solana', accept: 'application/json' },
     });
+
+    if (res.status === 402) {
+      const paid = await this.handlePayment(res, url);
+      const body = (await paid.json()) as BirdeyeEnvelope<T>;
+      if (body.success === false || body.data === undefined) {
+        throw new Error(`Birdeye ${path} returned unsuccessful after payment`);
+      }
+      return body.data;
+    }
+
     if (!res.ok) {
       throw new Error(`Birdeye ${path} failed: ${res.status} ${res.statusText}`);
     }
@@ -44,6 +92,85 @@ export class BirdeyeClient {
       throw new Error(`Birdeye ${path} returned unsuccessful payload`);
     }
     return body.data;
+  }
+
+  private async handlePayment(
+    res: Response,
+    originalUrl: string,
+  ): Promise<Response> {
+    const headerValue = res.headers.get('PAYMENT-REQUIRED');
+    if (!headerValue) throw new Error('x402: missing PAYMENT-REQUIRED header');
+
+    const decoded = JSON.parse(
+      Buffer.from(headerValue, 'base64').toString(),
+    ) as X402PaymentRequired;
+
+    const accept = decoded.accepts?.find(
+      (a) => a.scheme === 'exact' && a.network?.startsWith('solana:'),
+    );
+    if (!accept) throw new Error('x402: no compatible Solana payment scheme');
+
+    const amount = BigInt(accept.amount);
+    const payTo = new PublicKey(accept.payTo);
+    const asset = new PublicKey(accept.asset);
+
+    const sourceAta = getAssociatedTokenAddressSync(
+      asset,
+      this.keypair.publicKey,
+    );
+    const destAta = await getOrCreateAssociatedTokenAccount(
+      this.connection,
+      this.keypair,
+      asset,
+      payTo,
+    );
+
+    const paymentId = `pay_${uuidv4().replace(/-/g, '').slice(0, 20)}`;
+
+    const tx = new Transaction().add(
+      createTransferInstruction(
+        sourceAta,
+        destAta.address,
+        this.keypair.publicKey,
+        amount,
+      ),
+    );
+
+    const sig = await sendAndConfirmTransaction(this.connection, tx, [
+      this.keypair,
+    ]);
+    const amountUsdc = Number(amount) / 1_000_000;
+    this.onSpend(amountUsdc);
+    console.log(
+      `[Birdeye x402] Paid ${amountUsdc} USDC (tx: ${sig.slice(0, 8)}...)`,
+    );
+
+    const paymentPayload = {
+      x402Version: decoded.x402Version,
+      scheme: accept.scheme,
+      network: accept.network,
+      payload: {
+        signature: sig,
+        extensions: {
+          'payment-identifier': { id: paymentId },
+        },
+      },
+    };
+
+    const retryRes = await fetch(originalUrl, {
+      headers: {
+        'x-chain': 'solana',
+        accept: 'application/json',
+        'PAYMENT-RESPONSE': Buffer.from(
+          JSON.stringify(paymentPayload),
+        ).toString('base64'),
+      },
+    });
+
+    if (!retryRes.ok && retryRes.status !== 200) {
+      throw new Error(`x402: retry after payment failed: ${retryRes.status}`);
+    }
+    return retryRes;
   }
 
   async getOhlcv(tokenMint: string, limit = 50): Promise<OhlcvCandle[]> {

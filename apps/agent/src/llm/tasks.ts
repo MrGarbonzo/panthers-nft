@@ -1,4 +1,4 @@
-import type { LLMClient } from './client.js';
+import type { LLM } from './client.js';
 import type {
   HagglingSession,
   Position,
@@ -14,7 +14,7 @@ export interface BuyIntentResult {
 }
 
 export async function detectBuyIntent(
-  llm: LLMClient,
+  llm: LLM,
   message: string,
   userName: string,
 ): Promise<BuyIntentResult> {
@@ -40,7 +40,7 @@ export interface HaggleResult {
 }
 
 export async function generateHaggleResponse(
-  llm: LLMClient,
+  llm: LLM,
   session: HagglingSession,
   signals: SignalState,
 ): Promise<HaggleResult> {
@@ -75,7 +75,7 @@ export interface SentimentResult {
 }
 
 export async function scoreSentiment(
-  llm: LLMClient,
+  llm: LLM,
   recentMessages: string[],
 ): Promise<SentimentResult> {
   const system =
@@ -100,7 +100,7 @@ export interface AuctionDecision {
 }
 
 export async function decideAuctionType(
-  llm: LLMClient,
+  llm: LLM,
   signals: SignalState,
   availableNftCount: number,
 ): Promise<AuctionDecision> {
@@ -142,7 +142,7 @@ export interface TradeDecision {
 }
 
 export async function evaluateTradeProposal(
-  llm: LLMClient,
+  llm: LLM,
   proposal: TradeProposal,
 ): Promise<TradeDecision> {
   const system =
@@ -177,7 +177,7 @@ export interface TokenNomination {
 }
 
 export async function nominateLlmBucketToken(
-  llm: LLMClient,
+  llm: LLM,
   top10Tokens: TokenInfo[],
   currentPositions: Position[],
   signals: SignalState,
@@ -225,7 +225,7 @@ export interface MarketContextSummary {
 }
 
 export async function decideAndGeneratePost(
-  llm: LLMClient,
+  llm: LLM,
   signals: SignalState,
   recentMessages: string[],
   context: {
@@ -287,7 +287,7 @@ export interface GroupReplyResult {
 }
 
 export async function generateGroupReply(
-  llm: LLMClient,
+  llm: LLM,
   triggeringMessage: string,
   userName: string,
   recentMessages: string[],

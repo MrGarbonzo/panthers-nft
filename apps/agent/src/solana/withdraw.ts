@@ -78,6 +78,7 @@ export async function processWithdrawal(params: {
   const { [params.tokenId]: _removed, ...remainingNfts } = state.nfts;
   void _removed;
 
+  const now = Date.now();
   let nextState = {
     ...state,
     nfts: remainingNfts,
@@ -85,6 +86,11 @@ export async function processWithdrawal(params: {
       ...state.pool,
       totalUsdcDeposited: state.pool.totalUsdcDeposited - nft.usdcDeposited,
       totalUsdcCurrentValue: state.pool.totalUsdcCurrentValue - nft.currentNav,
+    },
+    personalFund: {
+      ...state.personalFund,
+      totalFeesCollectedUsdc: state.personalFund.totalFeesCollectedUsdc + feesUsdc,
+      lastUpdatedAt: now,
     },
   };
 
