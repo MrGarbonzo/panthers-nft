@@ -309,3 +309,32 @@ export async function generateGroupReply(
 
   return llm.invokeForJson<GroupReplyResult>(system, user, 400);
 }
+
+export interface HaggleIntentResult {
+  intent: 'offer' | 'accept_last' | 'reject' | 'question' | 'other';
+  offerAmount: number | null;
+}
+
+export async function parseHaggleIntent(
+  llm: LLM,
+  userMessage: string,
+  lastAgentOfferUsdc: number,
+): Promise<HaggleIntentResult> {
+  const system =
+    'You are parsing a buyer\'s message during an NFT price negotiation.\n' +
+    'Classify the intent and extract any offer amount.\n' +
+    'Respond ONLY with JSON, no other text. No markdown fences.';
+
+  const user =
+    `The agent's last offer was ${lastAgentOfferUsdc} USDC.\n` +
+    `Buyer said: "${userMessage}"\n\n` +
+    'Respond with: {"intent": "offer"|"accept_last"|"reject"|"question"|"other", "offerAmount": number|null}\n\n' +
+    'Rules:\n' +
+    '- "deal", "ok", "sure", "I\'ll take it", "fine", "yes", "agreed" → intent: "accept_last", offerAmount: null\n' +
+    '- Any message containing a number or price → intent: "offer", offerAmount: the number\n' +
+    '- "no", "too much", "forget it", "pass", "nah" → intent: "reject", offerAmount: null\n' +
+    '- Questions about the fund or NFT → intent: "question", offerAmount: null\n' +
+    '- Anything else → intent: "other", offerAmount: null';
+
+  return llm.invokeForJson<HaggleIntentResult>(system, user, 200);
+}

@@ -19,6 +19,7 @@ import { createP2pListing } from '../auction/p2p.js';
 import {
   detectBuyIntent,
   generateHaggleResponse,
+  parseHaggleIntent,
   scoreSentiment,
   decideAuctionType,
   generateGroupReply,
@@ -389,12 +390,54 @@ export class PanthersBot {
     text: string,
     state: PanthersState,
   ): Promise<void> {
-    const offerMatch = text.match(/(\d+(?:\.\d+)?)/);
-    if (!offerMatch) {
-      await ctx.reply('Please make me a USDC offer to continue.');
+    const lastAgentOffer = session.offerHistory
+      .filter((o) => o.fromAgent)
+      .at(-1)?.amount ?? session.agentCeiling;
+
+    let parsed;
+    try {
+      parsed = await parseHaggleIntent(
+        await this.llmFor('buy_intent'),
+        text,
+        lastAgentOffer,
+      );
+    } catch (err) {
+      console.error('parseHaggleIntent failed:', err);
+      await ctx.reply('Give me a moment, my models are catching up.');
       return;
     }
-    const userOffer = Number(offerMatch[1]);
+
+    if (parsed.intent === 'reject') {
+      const finalSession: HagglingSession = { ...session, status: 'rejected' };
+      const nextState: PanthersState = {
+        ...state,
+        haggling: { ...state.haggling, [session.sessionId]: finalSession },
+      };
+      await this.params.db.saveState(nextState, this.params.adapter, this.params.cacheWriter);
+      await ctx.reply('Understood. The offer stands if you change your mind.');
+      return;
+    }
+
+    if (parsed.intent === 'question' || parsed.intent === 'other') {
+      try {
+        const { generateGroupReply: genReply } = await import('../llm/tasks.js');
+        const reply = await genReply(
+          await this.llmFor('chat'),
+          text,
+          'buyer',
+          [],
+          state.signals,
+        );
+        await ctx.reply(reply.message || 'Make me an offer in USDC when you are ready.');
+      } catch {
+        await ctx.reply('Make me an offer in USDC when you are ready.');
+      }
+      return;
+    }
+
+    const userOffer = parsed.intent === 'accept_last'
+      ? lastAgentOffer
+      : (parsed.offerAmount ?? lastAgentOffer);
 
     const updatedOfferHistory = [
       ...session.offerHistory,
@@ -404,6 +447,18 @@ export class PanthersBot {
       ...session,
       offerHistory: updatedOfferHistory,
     };
+
+    if (parsed.intent === 'accept_last') {
+      const finalSession: HagglingSession = { ...withUserOffer, status: 'accepted' };
+      const nextState: PanthersState = {
+        ...state,
+        haggling: { ...state.haggling, [session.sessionId]: finalSession },
+      };
+      await this.params.db.saveState(nextState, this.params.adapter, this.params.cacheWriter);
+      await ctx.reply(`Agreed at ${userOffer} USDC.`);
+      await this.createPendingSaleAndShowPayment(ctx, userId, userOffer, session.sessionId);
+      return;
+    }
 
     let result;
     try {
@@ -582,7 +637,7 @@ export class PanthersBot {
     tokenId: string,
     text: string,
   ): Promise<void> {
-    if (text.trim().toUpperCase() !== 'YES') {
+    if (!/^(yes|yeah|yep|sure|ok|do it|confirm|go ahead|y)$/i.test(text.trim())) {
       this.awaitingWithdrawConfirm.delete(userId);
       await ctx.reply('Withdrawal cancelled.');
       return;
