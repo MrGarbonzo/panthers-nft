@@ -91,9 +91,16 @@ export class PanthersBot {
   }
 
   start(): void {
-    void this.bot.start({ onStart: (info) => {
-      console.log(`PanthersBot started as @${info.username}`);
-    } });
+    this.bot.start({
+      drop_pending_updates: true,
+      onStart: (info) => {
+        console.log(`PanthersBot started as @${info.username}`);
+      },
+    }).catch((err) => {
+      console.error('PanthersBot polling crashed:', err);
+      console.log('Retrying bot polling in 5s...');
+      setTimeout(() => this.start(), 5000);
+    });
     this.sentimentTimer = setInterval(
       () => void this.runSentiment(),
       SENTIMENT_INTERVAL_MS,
