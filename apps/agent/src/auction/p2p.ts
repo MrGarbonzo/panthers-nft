@@ -24,7 +24,6 @@ import { burnPanthersNft, mintPanthersNft } from '../solana/nft.js';
 import { recalculateAllNavs } from '../state/nav.js';
 import type { PublicCacheWriter } from '../public/cache.js';
 
-const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 const USDC_DECIMALS = 1_000_000;
 
 export async function createP2pListing(params: {
@@ -71,6 +70,7 @@ export async function executeP2pSale(params: {
   buyerTelegramId: string;
   buyerWallet: string;
   agreedPriceUsdc: number;
+  usdcMint: string;
   txSignature: string;
   agentPublicUrl?: string;
 }): Promise<{ newTokenId: string; mintAddress: string }> {
@@ -106,14 +106,15 @@ export async function executeP2pSale(params: {
   });
 
   const sellerPubkey = new PublicKey(listing.sellerWallet);
+  const usdcMintPk = new PublicKey(params.usdcMint);
   const sourceAta = await getAssociatedTokenAddress(
-    USDC_MINT,
+    usdcMintPk,
     params.agentKeypair.publicKey,
   );
   const destAta = await getOrCreateAssociatedTokenAccount(
     params.connection,
     params.agentKeypair,
-    USDC_MINT,
+    usdcMintPk,
     sellerPubkey,
   );
   const atomicAmount = BigInt(Math.floor(sellerReceives * USDC_DECIMALS));

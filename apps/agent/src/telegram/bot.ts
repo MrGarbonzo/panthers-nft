@@ -64,6 +64,7 @@ export interface PanthersBotParams {
   agentKeypair: Keypair;
   cacheWriter: PublicCacheWriter;
   personaCtx?: PersonaContextProvider;
+  usdcMint: string;
 }
 
 export class PanthersBot {
@@ -639,6 +640,7 @@ export class PanthersBot {
         agentKeypair: this.params.agentKeypair,
         tokenId,
         ownerWallet: nft.ownerWallet,
+        usdcMint: this.params.usdcMint,
         cacheWriter: this.params.cacheWriter,
       });
       await ctx.reply(

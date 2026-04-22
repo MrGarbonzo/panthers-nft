@@ -4,6 +4,7 @@ export const CONFIG = {
   COINGECKO_API_KEY: 'coingecko_api_key',
 
   SOLANA_RPC_URL: 'solana_rpc_url',
+  USDC_MINT: 'usdc_mint',
 
   TELEGRAM_GROUP_CHAT_ID: 'telegram_group_chat_id',
   SECRET_AI_BASE_URL: 'secret_ai_base_url',

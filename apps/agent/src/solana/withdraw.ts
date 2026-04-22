@@ -17,7 +17,6 @@ import { recalculateAllNavs } from '../state/nav.js';
 import { burnPanthersNft } from './nft.js';
 import type { PublicCacheWriter } from '../public/cache.js';
 
-const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 const USDC_DECIMALS = 1_000_000;
 
 export async function processWithdrawal(params: {
@@ -28,6 +27,7 @@ export async function processWithdrawal(params: {
   agentKeypair: Keypair;
   tokenId: string;
   ownerWallet: string;
+  usdcMint: string;
   cacheWriter?: PublicCacheWriter;
 }): Promise<{ withdrawnUsdc: number; feesUsdc: number }> {
   const state = await params.db.loadState(params.adapter);
@@ -52,14 +52,15 @@ export async function processWithdrawal(params: {
   });
 
   const ownerPubkey = new PublicKey(params.ownerWallet);
+  const usdcMintPk = new PublicKey(params.usdcMint);
   const sourceAta = await getAssociatedTokenAddress(
-    USDC_MINT,
+    usdcMintPk,
     params.agentKeypair.publicKey,
   );
   const destAta = await getOrCreateAssociatedTokenAccount(
     params.connection,
     params.agentKeypair,
-    USDC_MINT,
+    usdcMintPk,
     ownerPubkey,
   );
 

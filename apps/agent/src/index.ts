@@ -31,7 +31,6 @@ import type { PanthersState } from './state/schema.js';
 import { XClient } from './social/x-client.js';
 import { XPostingLoop } from './social/x-posting-loop.js';
 
-const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const STALE_SALE_INTERVAL_MS = 5 * 60 * 1000;
 
 async function main(): Promise<void> {
@@ -74,6 +73,11 @@ async function main(): Promise<void> {
     envKey: 'PUBLIC_PORT',
     defaultValue: '3000',
   }));
+
+  const usdcMint = db.config.get(CONFIG.USDC_MINT, {
+    envKey: 'USDC_MINT',
+    defaultValue: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  })!;
 
   const firstBootAt = Number(db.config.get(CONFIG.FIRST_BOOT_AT, {
     defaultValue: String(Date.now()),
@@ -165,7 +169,7 @@ async function main(): Promise<void> {
   const walletMonitor = new WalletMonitor({
     connection,
     agentWallet: keypair.publicKey.toBase58(),
-    usdcMintSolana: USDC_MINT,
+    usdcMintSolana: usdcMint,
   });
   await walletMonitor.start();
 
@@ -191,6 +195,7 @@ async function main(): Promise<void> {
       connection,
       agentKeypair: keypair,
       cacheWriter,
+      usdcMint,
     });
     bot.start();
     console.log('Telegram bot started');
@@ -202,7 +207,7 @@ async function main(): Promise<void> {
       wsUrl,
       rpcUrl: solanaRpcUrl,
       agentWallet: keypair.publicKey.toBase58(),
-      usdcMint: USDC_MINT,
+      usdcMint,
       onInboundTransfer: async (transfer: InboundTransfer) => {
         const currentState = await db.loadState(adapter);
         const memo = transfer.memo;
@@ -262,6 +267,7 @@ async function main(): Promise<void> {
               agreedPriceUsdc: transfer.amountUsdc,
               txSignature: transfer.txSignature,
               agentPublicUrl,
+              usdcMint,
             });
             const updatedState = await db.loadState(adapter);
             const nft = updatedState.nfts[result.newTokenId];
@@ -369,9 +375,9 @@ async function main(): Promise<void> {
         const { Transaction: Tx, sendAndConfirmTransaction: sact } =
           await import('@solana/web3.js');
 
-        const usdcMint = new PK(USDC_MINT);
-        const sourceAta = await gata(usdcMint, keypair.publicKey);
-        const destAta = await gocata(connection, keypair, usdcMint, new PK(fromWallet));
+        const usdcPk = new PK(usdcMint);
+        const sourceAta = await gata(usdcPk, keypair.publicKey);
+        const destAta = await gocata(connection, keypair, usdcPk, new PK(fromWallet));
         const atomicAmount = BigInt(Math.floor(withdrawnUsdc * 1_000_000));
         const tx = new Tx().add(
           cti(sourceAta, destAta.address, keypair.publicKey, atomicAmount),
