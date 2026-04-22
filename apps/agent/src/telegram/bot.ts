@@ -195,6 +195,7 @@ export class PanthersBot {
     this.bot.command('buy', (ctx) => this.handleBuyCommand(ctx));
 
     this.bot.on('message:text', async (ctx) => {
+      console.log(`[Bot] msg from ${ctx.chat?.type}:${ctx.chat?.id} user=${ctx.from?.username}`);
       const chatType = ctx.chat?.type;
       if (chatType === 'private') {
         await this.handlePrivateMessage(ctx);
