@@ -234,7 +234,11 @@ export class PanthersBot {
     if (await this.tryReplyToMention(ctx, text, userName)) return;
 
     try {
-      const intent = await detectBuyIntent(await this.llmFor('buy_intent'), text, userName);
+      console.log(`[Bot] calling detectBuyIntent for ${userName}...`);
+      const llm = await this.llmFor('buy_intent');
+      console.log('[Bot] got LLM client, invoking...');
+      const intent = await detectBuyIntent(llm, text, userName);
+      console.log(`[Bot] intent: hasBuyIntent=${intent.hasBuyIntent} confidence=${intent.confidence}`);
       if (
         intent.hasBuyIntent &&
         (intent.confidence === 'high' || intent.confidence === 'medium')
