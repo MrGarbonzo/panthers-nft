@@ -218,12 +218,18 @@ async function main(): Promise<void> {
           console.log(
             `Unmatched USDC transfer: ${transfer.txSignature} amount=${amount} memo=${memo ?? 'none'}`,
           );
+          const pf = currentState.personalFund ?? {
+            totalFeesCollectedUsdc: 0,
+            totalDonationsUsdc: 0,
+            totalInfraSpendSolanaUsdc: 0,
+            totalInfraSpendBaseUsdc: 0,
+            lastUpdatedAt: 0,
+          };
           const updated: PanthersState = {
             ...currentState,
             personalFund: {
-              ...currentState.personalFund,
-              totalDonationsUsdc:
-                currentState.personalFund.totalDonationsUsdc + amount,
+              ...pf,
+              totalDonationsUsdc: pf.totalDonationsUsdc + amount,
               lastUpdatedAt: Date.now(),
             },
           };
@@ -351,8 +357,8 @@ async function main(): Promise<void> {
           totalUsdcCurrentValue: currentState.pool.totalUsdcCurrentValue - nft.currentNav,
         },
         personalFund: {
-          ...currentState.personalFund,
-          totalFeesCollectedUsdc: currentState.personalFund.totalFeesCollectedUsdc + feesUsdc,
+          ...(currentState.personalFund ?? { totalFeesCollectedUsdc: 0, totalDonationsUsdc: 0, totalInfraSpendSolanaUsdc: 0, totalInfraSpendBaseUsdc: 0, lastUpdatedAt: 0 }),
+          totalFeesCollectedUsdc: (currentState.personalFund?.totalFeesCollectedUsdc ?? 0) + feesUsdc,
           lastUpdatedAt: Date.now(),
         },
       };
@@ -403,12 +409,12 @@ async function main(): Promise<void> {
   const onBirdeyeSpend = async (amountUsdc: number) => {
     try {
       const s = await db.loadState(adapter);
+      const spf = s.personalFund ?? { totalFeesCollectedUsdc: 0, totalDonationsUsdc: 0, totalInfraSpendSolanaUsdc: 0, totalInfraSpendBaseUsdc: 0, lastUpdatedAt: 0 };
       const updated: PanthersState = {
         ...s,
         personalFund: {
-          ...s.personalFund,
-          totalInfraSpendSolanaUsdc:
-            s.personalFund.totalInfraSpendSolanaUsdc + amountUsdc,
+          ...spf,
+          totalInfraSpendSolanaUsdc: spf.totalInfraSpendSolanaUsdc + amountUsdc,
           lastUpdatedAt: Date.now(),
         },
       };

@@ -89,8 +89,8 @@ export async function processWithdrawal(params: {
       totalUsdcCurrentValue: state.pool.totalUsdcCurrentValue - nft.currentNav,
     },
     personalFund: {
-      ...state.personalFund,
-      totalFeesCollectedUsdc: state.personalFund.totalFeesCollectedUsdc + feesUsdc,
+      ...(state.personalFund ?? { totalFeesCollectedUsdc: 0, totalDonationsUsdc: 0, totalInfraSpendSolanaUsdc: 0, totalInfraSpendBaseUsdc: 0, lastUpdatedAt: 0 }),
+      totalFeesCollectedUsdc: (state.personalFund?.totalFeesCollectedUsdc ?? 0) + feesUsdc,
       lastUpdatedAt: now,
     },
   };
