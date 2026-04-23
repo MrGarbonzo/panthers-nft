@@ -221,9 +221,20 @@ async function main(): Promise<void> {
         );
         const match = walletMatch;
         if (!match) {
+          const alreadyPaid = Object.values(currentState.pendingSales).some(
+            (s) =>
+              s.status === 'paid' &&
+              s.buyerWallet.toLowerCase() === transfer.senderWallet.toLowerCase(),
+          );
+          if (alreadyPaid) {
+            console.log(
+              `Already-processed transfer from ${transfer.senderWallet.slice(0, 8)}..., skipping`,
+            );
+            return;
+          }
           const amount = transfer.amountUsdc;
           console.log(
-            `Unmatched USDC transfer: ${transfer.txSignature} amount=${amount} memo=${memo ?? 'none'}`,
+            `Donation: ${transfer.txSignature} amount=${amount} from=${transfer.senderWallet.slice(0, 8)}...`,
           );
           const pf = currentState.personalFund ?? {
             totalFeesCollectedUsdc: 0,
@@ -310,6 +321,13 @@ async function main(): Promise<void> {
           const nft = updatedState.nfts[result.tokenId];
           await bot!.sendGroupMessage(
             `Panthers Fund #${nft?.nftIndex ?? '?'} minted to new owner.`,
+          );
+          await bot!.sendDm(
+            match.telegramUserId,
+            `Your Panthers Fund #${nft?.nftIndex ?? '?'} has been minted.\n\n` +
+              `Token ID: ${result.tokenId}\n` +
+              `Mint address: ${result.mintAddress}\n\n` +
+              'The NFT is held in agent custody. Use /claim to transfer it to your wallet.',
           );
           console.log(
             `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress}`,

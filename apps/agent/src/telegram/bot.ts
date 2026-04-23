@@ -158,6 +158,14 @@ export class PanthersBot {
     }
   }
 
+  async sendDm(telegramUserId: string, text: string): Promise<void> {
+    try {
+      await this.bot.api.sendMessage(telegramUserId, text);
+    } catch (err) {
+      console.error(`sendDm failed for ${telegramUserId}:`, err);
+    }
+  }
+
   async announceAuction(auction: AuctionRecord): Promise<void> {
     const typeLabel =
       auction.type === 'dutch'
