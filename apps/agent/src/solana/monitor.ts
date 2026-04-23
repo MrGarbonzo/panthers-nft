@@ -171,7 +171,9 @@ export class UsdcMonitor {
         const amt = info.amount;
         if (typeof amt === 'string') amountUsdc = Number(amt) / USDC_DECIMALS;
       }
-      senderWallet = String(info.authority ?? info.source ?? '');
+      senderWallet = String(
+        info.authority ?? info.multisigAuthority ?? info.source ?? '',
+      );
     }
 
     if (amountUsdc <= 0) return null;
