@@ -44,6 +44,7 @@ export class UsdcMonitor {
 
   start(): void {
     this.closed = false;
+    this.seedSeen().catch(() => {});
     this.ws = new WebSocket(this.wsUrl);
 
     this.ws.addEventListener('open', () => {
@@ -80,6 +81,18 @@ export class UsdcMonitor {
     this.closed = true;
     this.ws?.close();
     this.ws = null;
+  }
+
+  private async seedSeen(): Promise<void> {
+    try {
+      const sigs = await this.connection.getSignaturesForAddress(this.agentAta, {
+        limit: 20,
+      });
+      for (const s of sigs) this.seen.add(s.signature);
+      console.log(`UsdcMonitor seeded ${sigs.length} existing signatures`);
+    } catch (err) {
+      console.error('UsdcMonitor seedSeen failed:', err);
+    }
   }
 
   private async handleMessage(raw: string): Promise<void> {
