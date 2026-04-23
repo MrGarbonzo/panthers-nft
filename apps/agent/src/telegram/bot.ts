@@ -35,6 +35,13 @@ const SENTIMENT_INTERVAL_MS = 10 * 60 * 1000;
 const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 const REDEMPTION_WINDOW_MS = 60 * 60 * 1000;
 
+const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+interface AwaitingBuyerWallet {
+  agreedPriceUsdc: number;
+  sessionId: string;
+}
+
 interface AwaitingWithdrawConfirm {
   tokenId: string;
 }
@@ -66,6 +73,7 @@ export class PanthersBot {
   private readonly bot: Bot;
   private readonly groupChatId: string;
   private readonly messageBuffer: string[] = [];
+  private readonly awaitingBuyerWallet = new Map<string, AwaitingBuyerWallet>();
   private readonly awaitingWithdrawConfirm = new Map<
     string,
     AwaitingWithdrawConfirm
@@ -131,14 +139,12 @@ export class PanthersBot {
     try {
       await this.bot.api.sendMessage(
         telegramUserId,
-        `Congratulations! You won the Panthers Fund NFT auction at ${finalPrice} USDC.`,
+        `Congratulations! You won the Panthers Fund NFT auction at ${finalPrice} USDC.\n\nSend me your Solana wallet address to receive payment instructions.`,
       );
-      await this.createPendingSaleAndShowPayment(
-        { reply: (msg: string) => this.bot.api.sendMessage(telegramUserId, msg) } as unknown as Context,
-        telegramUserId,
-        finalPrice,
-        auctionId,
-      );
+      this.awaitingBuyerWallet.set(telegramUserId, {
+        agreedPriceUsdc: finalPrice,
+        sessionId: auctionId,
+      });
     } catch (err) {
       console.error('sendAuctionWinDm failed:', err);
     }
@@ -318,6 +324,12 @@ export class PanthersBot {
 
     const userId = String(from.id);
 
+    const awaitingWallet = this.awaitingBuyerWallet.get(userId);
+    if (awaitingWallet) {
+      await this.handleBuyerWalletAddress(ctx, userId, text, awaitingWallet);
+      return;
+    }
+
     const awaitingConfirm = this.awaitingWithdrawConfirm.get(userId);
     if (awaitingConfirm) {
       await this.completeWithdrawConfirm(ctx, userId, awaitingConfirm.tokenId, text);
@@ -455,8 +467,8 @@ export class PanthersBot {
         haggling: { ...state.haggling, [session.sessionId]: finalSession },
       };
       await this.params.db.saveState(nextState, this.params.adapter, this.params.cacheWriter);
-      await ctx.reply(`Agreed at ${userOffer} USDC.`);
-      await this.createPendingSaleAndShowPayment(ctx, userId, userOffer, session.sessionId);
+      await ctx.reply(`Agreed at ${userOffer} USDC.\n\nSend me your Solana wallet address to receive payment instructions.`);
+      this.awaitingBuyerWallet.set(userId, { agreedPriceUsdc: userOffer, sessionId: session.sessionId });
       return;
     }
 
@@ -490,8 +502,8 @@ export class PanthersBot {
       await ctx.reply(result.message);
     } else if (result.action === 'accept') {
       finalSession = { ...withUserOffer, status: 'accepted' };
-      await ctx.reply(result.message);
-      await this.createPendingSaleAndShowPayment(ctx, userId, userOffer, session.sessionId);
+      await ctx.reply(`${result.message}\n\nSend me your Solana wallet address to receive payment instructions.`);
+      this.awaitingBuyerWallet.set(userId, { agreedPriceUsdc: userOffer, sessionId: session.sessionId });
     } else {
       finalSession = { ...withUserOffer, status: 'rejected' };
       await ctx.reply(result.message);
@@ -504,11 +516,35 @@ export class PanthersBot {
     await this.params.db.saveState(nextState, this.params.adapter, this.params.cacheWriter);
   }
 
+  private async handleBuyerWalletAddress(
+    ctx: Context,
+    userId: string,
+    text: string,
+    awaiting: AwaitingBuyerWallet,
+  ): Promise<void> {
+    const candidate = text.trim();
+    if (!SOLANA_ADDRESS_REGEX.test(candidate)) {
+      await ctx.reply(
+        "That doesn't look like a valid Solana address. Please send your wallet address.",
+      );
+      return;
+    }
+    this.awaitingBuyerWallet.delete(userId);
+    await this.createPendingSaleAndShowPayment(
+      ctx,
+      userId,
+      awaiting.agreedPriceUsdc,
+      awaiting.sessionId,
+      candidate,
+    );
+  }
+
   private async createPendingSaleAndShowPayment(
     ctx: Context,
     userId: string,
     agreedPriceUsdc: number,
     sessionId: string,
+    buyerWallet: string,
   ): Promise<void> {
     const state = await this.params.db.loadState(this.params.adapter);
     const saleId = uuidv4();
@@ -521,7 +557,7 @@ export class PanthersBot {
     const pending: PendingSale = {
       saleId,
       telegramUserId: userId,
-      buyerWallet: agentWallet,
+      buyerWallet,
       agreedPriceUsdc,
       expiresAt: Date.now() + PAYMENT_WINDOW_MS,
       status: 'awaiting_payment',
@@ -538,8 +574,8 @@ export class PanthersBot {
     await ctx.reply(
       `Send exactly ${agreedPriceUsdc} USDC to:\n` +
         `${agentWallet}\n\n` +
-        `Include this memo exactly: ${saleId}\n\n` +
-        "Payment window: 30 minutes. I'll mint your NFT automatically when payment is confirmed.\n\n" +
+        `Send from this wallet only: ${buyerWallet}\n` +
+        "Payment window: 30 minutes. I'll detect the transfer and mint your NFT automatically.\n\n" +
         'The NFT will be held in agent custody. Use /claim to transfer it to your own wallet anytime.',
     );
   }

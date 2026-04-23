@@ -211,8 +211,15 @@ async function main(): Promise<void> {
       onInboundTransfer: async (transfer: InboundTransfer) => {
         const currentState = await db.loadState(adapter);
         const memo = transfer.memo;
-        const match =
+        const memoMatch =
           memo !== null ? currentState.pendingSales[memo] : undefined;
+        const walletMatch = memoMatch ?? Object.values(currentState.pendingSales).find(
+          (s) =>
+            s.status === 'awaiting_payment' &&
+            s.buyerWallet.toLowerCase() === transfer.senderWallet.toLowerCase() &&
+            Date.now() < s.expiresAt,
+        );
+        const match = walletMatch;
         if (!match) {
           const amount = transfer.amountUsdc;
           console.log(
