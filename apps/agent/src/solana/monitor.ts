@@ -32,6 +32,7 @@ export class UsdcMonitor {
   private readonly agentAta: PublicKey;
   private readonly seen = new Set<string>();
   private closed = false;
+  private seeded = false;
 
   constructor(private readonly opts: UsdcMonitorOptions) {
     this.wsUrl = opts.wsUrl;
@@ -44,7 +45,10 @@ export class UsdcMonitor {
 
   start(): void {
     this.closed = false;
-    this.seedSeen().catch(() => {});
+    if (!this.seeded) {
+      this.seedSeen().catch(() => {});
+      this.seeded = true;
+    }
     this.ws = new WebSocket(this.wsUrl);
 
     this.ws.addEventListener('open', () => {
