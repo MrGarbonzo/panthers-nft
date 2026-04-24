@@ -49,7 +49,6 @@ export async function completeSale(params: {
   const nftRecord: NftRecord = {
     tokenId,
     ownerWallet: pendingSale.buyerWallet,
-    ownerTelegramId: pendingSale.telegramUserId,
     usdcDeposited: params.confirmedAmountUsdc,
     currentNav: params.confirmedAmountUsdc,
     mintPrice: pendingSale.agreedPriceUsdc,

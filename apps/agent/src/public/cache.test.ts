@@ -9,7 +9,6 @@ function makeNft(overrides: Partial<NftRecord>): NftRecord {
   return {
     tokenId: overrides.tokenId ?? 'token',
     ownerWallet: 'owner',
-    ownerTelegramId: 'tg',
     usdcDeposited: overrides.usdcDeposited ?? 100,
     currentNav: overrides.currentNav ?? 100,
     mintPrice: 100,

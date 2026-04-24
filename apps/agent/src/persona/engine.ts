@@ -68,6 +68,7 @@ export class PersonaEngine {
       trade: 'Evaluate the trade proposal and return only JSON. Be conservative with capital.',
       nomination: 'Nominate a token and return only JSON. No preamble.',
       news_summary: 'Summarize market context in 1-2 short sentences, in character. No markdown.',
+      offer: 'Evaluate the purchase offer and return only JSON. Be strategic — protect fund value but close deals when appropriate.',
     };
     return instructions[task];
   }

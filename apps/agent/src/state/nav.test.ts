@@ -6,7 +6,6 @@ function makeNft(tokenId: string, usdcDeposited: number, nftIndex: number) {
   return {
     tokenId,
     ownerWallet: `owner-${tokenId}`,
-    ownerTelegramId: `tg-${tokenId}`,
     usdcDeposited,
     currentNav: usdcDeposited,
     mintPrice: usdcDeposited,

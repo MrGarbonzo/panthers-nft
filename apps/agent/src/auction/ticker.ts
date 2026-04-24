@@ -1,6 +1,5 @@
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
-import type { PanthersBot } from '../telegram/bot.js';
 import type { PublicCacheWriter } from '../public/cache.js';
 import type { AuctionRecord, PanthersState } from '../state/schema.js';
 import { getWinningBid, isExpired, tickDutchAuction } from './engine.js';
@@ -10,7 +9,6 @@ const DEFAULT_INTERVAL_MS = 60 * 1000;
 export interface AuctionTickerParams {
   db: PanthersDb;
   adapter: PanthersStateAdapter;
-  bot: PanthersBot;
   cacheWriter: PublicCacheWriter;
   intervalMs?: number;
 }
@@ -58,11 +56,7 @@ export class AuctionTicker {
         auction = { ...auction, status: 'active', announcedAt: now };
         nextAuctions[auctionId] = auction;
         mutated = true;
-        try {
-          await this.params.bot.announceAuction(auction);
-        } catch (err) {
-          console.error('announceAuction failed:', err);
-        }
+        console.log(`[AuctionTicker] Auction ${auctionId} now active`);
       }
 
       if (auction.status === 'active' && auction.type === 'dutch') {
@@ -71,11 +65,7 @@ export class AuctionTicker {
           auction = ticked;
           nextAuctions[auctionId] = auction;
           mutated = true;
-          try {
-            await this.params.bot.announceDutchDrop(auction);
-          } catch (err) {
-            console.error('announceDutchDrop failed:', err);
-          }
+          console.log(`[AuctionTicker] Dutch drop: ${auction.currentPrice} USDC`);
         }
       }
 
@@ -85,27 +75,16 @@ export class AuctionTicker {
           auction = { ...auction, status: 'cancelled' };
           nextAuctions[auctionId] = auction;
           mutated = true;
-          try {
-            await this.params.bot.announceAuctionCancelled(auction);
-          } catch (err) {
-            console.error('announceAuctionCancelled failed:', err);
-          }
+          console.log(`[AuctionTicker] Auction ${auctionId} cancelled (no bids)`);
         } else {
           auction = {
             ...auction,
             status: 'settled',
-            winnerId: winner.bidderTelegramId,
+            winnerId: winner.bidderWallet,
           };
           nextAuctions[auctionId] = auction;
           mutated = true;
-          try {
-            await this.params.bot.sendAuctionWinDm(
-              winner.bidderTelegramId,
-              auctionId,
-            );
-          } catch (err) {
-            console.error('sendAuctionWinDm failed:', err);
-          }
+          console.log(`[AuctionTicker] Auction ${auctionId} settled, winner: ${winner.bidderWallet}`);
         }
       }
     }

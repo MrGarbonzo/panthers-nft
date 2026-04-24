@@ -1,6 +1,5 @@
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
-import type { PanthersBot } from '../telegram/bot.js';
 import type { LLMRouter } from '../llm/router.js';
 import type { PublicCacheWriter } from '../public/cache.js';
 import type { AuctionRecord, PanthersState } from '../state/schema.js';
@@ -18,7 +17,6 @@ export interface AuctionSchedulerParams {
   db: PanthersDb;
   adapter: PanthersStateAdapter;
   llmRouter: LLMRouter;
-  bot: PanthersBot;
   cacheWriter: PublicCacheWriter;
   intervalMs?: number;
   personaCtx?: PersonaContextProvider;
@@ -79,9 +77,7 @@ export class AuctionScheduler {
       this.params.cacheWriter,
     );
 
-    await this.params.bot.sendGroupMessage(
-      `🗓 Panthers Fund auction scheduled for ${new Date(scheduledAt).toUTCString()}`,
-    );
+    console.log(`[AuctionScheduler] Auction scheduled for ${new Date(scheduledAt).toUTCString()}`);
     return auction;
   }
 
@@ -146,11 +142,6 @@ export class AuctionScheduler {
       this.params.cacheWriter,
     );
 
-    try {
-      await this.params.bot.announceAuction(auction);
-    } catch (err) {
-      console.error('announceAuction failed:', err);
-    }
-    console.log(`Opportunistic auction triggered by ${triggerReason}`);
+    console.log(`[AuctionScheduler] Opportunistic auction triggered by ${triggerReason}`);
   }
 }

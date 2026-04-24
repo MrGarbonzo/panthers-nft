@@ -30,21 +30,19 @@ export async function createP2pListing(params: {
   db: PanthersDb;
   adapter: PanthersStateAdapter;
   tokenId: string;
-  sellerTelegramId: string;
   sellerWallet: string;
   askingPriceUsdc: number;
 }): Promise<P2pListing> {
   const state = await params.db.loadState(params.adapter);
   const nft = state.nfts[params.tokenId];
   if (!nft) throw new Error('NFT not found');
-  if (nft.ownerTelegramId !== params.sellerTelegramId) {
+  if (nft.ownerWallet !== params.sellerWallet) {
     throw new Error('Not your NFT');
   }
 
   const listing: P2pListing = {
     listingId: uuidv4(),
     tokenId: params.tokenId,
-    sellerTelegramId: params.sellerTelegramId,
     sellerWallet: params.sellerWallet,
     askingPriceUsdc: params.askingPriceUsdc,
     createdAt: Date.now(),
@@ -67,7 +65,6 @@ export async function executeP2pSale(params: {
   agentKeypair: Keypair;
   cacheWriter: PublicCacheWriter;
   listingId: string;
-  buyerTelegramId: string;
   buyerWallet: string;
   agreedPriceUsdc: number;
   usdcMint: string;
@@ -132,7 +129,6 @@ export async function executeP2pSale(params: {
   const newNft: NftRecord = {
     tokenId: newTokenId,
     ownerWallet: params.buyerWallet,
-    ownerTelegramId: params.buyerTelegramId,
     usdcDeposited: nft.usdcDeposited,
     currentNav: nft.currentNav,
     mintPrice: params.agreedPriceUsdc,
@@ -149,7 +145,6 @@ export async function executeP2pSale(params: {
     nftTokenId: newTokenId,
     buyerWallet: params.buyerWallet,
     sellerWallet: listing.sellerWallet,
-    sellerTelegramId: listing.sellerTelegramId,
     amount: params.agreedPriceUsdc,
     feesUsdc,
     status: 'released',

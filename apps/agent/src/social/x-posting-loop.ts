@@ -80,9 +80,9 @@ export class XPostingLoop {
     }
   }
 
-  async mirrorSurvivalPost(telegramText: string): Promise<void> {
+  async mirrorSurvivalPost(text: string): Promise<void> {
     try {
-      await this.params.xClient.post(telegramText.slice(0, 280));
+      await this.params.xClient.post(text.slice(0, 280));
     } catch (err) {
       console.error('[XPostingLoop] Mirror failed:', err);
     }

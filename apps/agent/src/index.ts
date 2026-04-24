@@ -10,7 +10,6 @@ import { UsdcMonitor, type InboundTransfer } from './solana/monitor.js';
 import { NftMonitor } from './solana/nft-monitor.js';
 import { completeSale } from './solana/deposit.js';
 import { LLMRouter } from './llm/router.js';
-import { PanthersBot } from './telegram/bot.js';
 import { BirdeyeClient } from './trading/birdeye.js';
 import { JupiterClient } from './trading/jupiter.js';
 import { TradingLoop } from './trading/loop.js';
@@ -19,7 +18,6 @@ import { PublicBalanceServer } from './public/server.js';
 import { AuctionTicker } from './auction/ticker.js';
 import { AuctionScheduler } from './auction/scheduler.js';
 import { executeP2pSale } from './auction/p2p.js';
-import { GroupActivityLoop } from './telegram/group-activity.js';
 import { MarketContext } from './trading/market-context.js';
 import { deriveWsUrl, isHeliusUrl } from './solana/rpc.js';
 import { PersonaEngine } from './persona/engine.js';
@@ -101,8 +99,27 @@ async function main(): Promise<void> {
   const nftImagesDir = '/data/nft-images';
   try { mkdirSync(nftImagesDir, { recursive: true }); } catch {}
 
+  // Run expired sale cleanup at startup
+  {
+    const bootState = await db.loadState(adapter);
+    const cleaned = db.expireStalePendingSales(bootState);
+    if (cleaned !== bootState) {
+      const expired = Object.values(cleaned.pendingSales).filter(
+        (s) => s.status === 'expired' && bootState.pendingSales[s.saleId]?.status === 'awaiting_payment',
+      );
+      for (const s of expired) {
+        console.log(`[Boot] Expired pending sale ${s.saleId} for wallet ${s.buyerWallet.slice(0, 8)}...`);
+      }
+      await db.saveState(cleaned, adapter, cacheWriter);
+      console.log(`[Boot] Cleaned up ${expired.length} expired pending sale(s)`);
+    }
+  }
+
   const publicServer = new PublicBalanceServer({
     cacheWriter,
+    connection,
+    db,
+    adapter,
     port: publicPort,
     devMode,
     startedAt: Date.now(),
@@ -128,26 +145,9 @@ async function main(): Promise<void> {
     defaultValue: 'https://secretai-rytn.scrtlabs.com:21434',
   })!;
 
-  const telegramToken = db.config.get(CONFIG.TELEGRAM_BOT_TOKEN, {
-    envKey: 'TELEGRAM_BOT_TOKEN',
-    required: true,
-  })!;
-
-  const telegramGroupChatId = db.config.get(CONFIG.TELEGRAM_GROUP_CHAT_ID, {
-    envKey: 'TELEGRAM_GROUP_CHAT_ID',
-    required: true,
-  })!;
-
   const coingeckoApiKey = db.config.get(CONFIG.COINGECKO_API_KEY, {
     envKey: 'COINGECKO_API_KEY',
   });
-
-  const groupActivityIntervalMs = Number(db.config.get(
-    CONFIG.GROUP_ACTIVITY_INTERVAL_MS, {
-      envKey: 'GROUP_ACTIVITY_INTERVAL_MS',
-      defaultValue: String(30 * 60 * 1000),
-    },
-  ));
 
   const agentPublicUrl = db.config.get(CONFIG.AGENT_PUBLIC_URL, {
     envKey: 'AGENT_PUBLIC_URL',
@@ -182,26 +182,9 @@ async function main(): Promise<void> {
     agentWallet: keypair.publicKey.toBase58(),
   });
 
-  let bot: PanthersBot | null = null;
-  if (telegramToken && telegramGroupChatId) {
-    bot = new PanthersBot({
-      token: telegramToken,
-      groupChatId: telegramGroupChatId,
-      llmRouter,
-      personaCtx,
-      db,
-      adapter,
-      umi,
-      connection,
-      agentKeypair: keypair,
-      cacheWriter,
-      usdcMint,
-    });
-    bot.start();
-    console.log('Telegram bot started');
-  }
+  publicServer.setLlmDependencies(llmRouter, personaCtx);
 
-  if (isHeliusUrl(solanaRpcUrl) && bot) {
+  if (isHeliusUrl(solanaRpcUrl)) {
     const wsUrl = deriveWsUrl(solanaRpcUrl);
     const monitor = new UsdcMonitor({
       wsUrl,
@@ -252,11 +235,6 @@ async function main(): Promise<void> {
             },
           };
           await db.saveState(updated, adapter, cacheWriter);
-          const daysExtended = dailyBurnRate > 0 ? amount / dailyBurnRate : 0;
-          if (bot) {
-            const msg = `Someone sent ${amount.toFixed(2)} USDC. That is ${daysExtended.toFixed(1)} more days.${amount >= 50 ? ' Thank you.' : ' Noted.'}`;
-            await bot.sendGroupMessage(msg).catch(() => {});
-          }
           void xPostingLoop?.onEvent('donation_received', `${amount.toFixed(2)} USDC received`);
           return;
         }
@@ -286,18 +264,12 @@ async function main(): Promise<void> {
               agentKeypair: keypair,
               cacheWriter,
               listingId: match.listingId,
-              buyerTelegramId: match.telegramUserId,
               buyerWallet: match.buyerWallet,
               agreedPriceUsdc: transfer.amountUsdc,
               txSignature: transfer.txSignature,
               agentPublicUrl,
               usdcMint,
             });
-            const updatedState = await db.loadState(adapter);
-            const nft = updatedState.nfts[result.newTokenId];
-            await bot!.sendGroupMessage(
-              `Panthers Fund #${nft?.nftIndex ?? '?'} sold P2P.`,
-            );
             console.log(`P2P sale complete: newTokenId=${result.newTokenId}`);
           } catch (err) {
             console.error(`Failed P2P sale ${match.saleId}:`, err);
@@ -319,18 +291,8 @@ async function main(): Promise<void> {
           });
           const updatedState = await db.loadState(adapter);
           const nft = updatedState.nfts[result.tokenId];
-          await bot!.sendGroupMessage(
-            `Panthers Fund #${nft?.nftIndex ?? '?'} minted to new owner.`,
-          );
-          await bot!.sendDm(
-            match.telegramUserId,
-            `Your Panthers Fund #${nft?.nftIndex ?? '?'} has been minted.\n\n` +
-              `Token ID: ${result.tokenId}\n` +
-              `Mint address: ${result.mintAddress}\n\n` +
-              'The NFT is held in agent custody. Use /claim to transfer it to your wallet.',
-          );
           console.log(
-            `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress}`,
+            `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress} nftIndex=${nft?.nftIndex ?? '?'}`,
           );
         } catch (err) {
           console.error(`Failed to complete sale ${match.saleId}:`, err);
@@ -418,12 +380,6 @@ async function main(): Promise<void> {
       } catch (err) {
         console.error(`[NftMonitor] USDC transfer failed:`, err);
       }
-
-      if (bot) {
-        await bot.sendGroupMessage(
-          `Panthers Fund #${nft.nftIndex} redeemed. ${withdrawnUsdc.toFixed(2)} USDC returned.`,
-        ).catch(() => {});
-      }
     },
   });
   for (const nft of Object.values(state.nfts)) {
@@ -491,32 +447,17 @@ async function main(): Promise<void> {
   tradingLoop.start();
   console.log('Trading loop started');
 
-  if (bot) {
-    const ticker = new AuctionTicker({ db, adapter, bot, cacheWriter });
-    ticker.start();
-    const scheduler = new AuctionScheduler({ db, adapter, llmRouter, bot, cacheWriter, personaCtx });
-    scheduler.start();
-    console.log('Auction ticker + scheduler started');
+  const ticker = new AuctionTicker({ db, adapter, cacheWriter });
+  ticker.start();
+  const scheduler = new AuctionScheduler({ db, adapter, llmRouter, cacheWriter, personaCtx });
+  scheduler.start();
+  console.log('Auction ticker + scheduler started');
 
-    let market: MarketContext | undefined;
-    if (coingeckoApiKey) {
-      market = new MarketContext({ coingeckoApiKey });
-      await market.start();
-    } else {
-      console.log('MarketContext skipped — missing COINGECKO_API_KEY');
-    }
-
-    const groupActivity = new GroupActivityLoop({
-      db,
-      adapter,
-      llmRouter,
-      bot,
-      market,
-      intervalMs: groupActivityIntervalMs,
-      personaCtx,
-      onSurvivalPost: (text) => void xPostingLoop?.mirrorSurvivalPost(text),
-    });
-    groupActivity.start();
+  if (coingeckoApiKey) {
+    const market = new MarketContext({ coingeckoApiKey });
+    await market.start();
+  } else {
+    console.log('MarketContext skipped — missing COINGECKO_API_KEY');
   }
 
   setInterval(async () => {
@@ -524,6 +465,12 @@ async function main(): Promise<void> {
       const current = await db.loadState(adapter);
       const next = db.expireStalePendingSales(current);
       if (next !== current) {
+        const expired = Object.values(next.pendingSales).filter(
+          (s) => s.status === 'expired' && current.pendingSales[s.saleId]?.status === 'awaiting_payment',
+        );
+        for (const s of expired) {
+          console.log(`[Cleanup] Expired pending sale ${s.saleId} for wallet ${s.buyerWallet.slice(0, 8)}...`);
+        }
         await db.saveState(next, adapter, cacheWriter);
       }
     } catch (err) {

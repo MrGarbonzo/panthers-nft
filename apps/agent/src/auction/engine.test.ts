@@ -54,9 +54,9 @@ import {
     triggeredBy: 'opportunistic',
   });
   const now = Date.now();
-  const bid1: Bid = { bidderWallet: 'w1', bidderTelegramId: 'u1', amount: 110, placedAt: now };
-  const bid2: Bid = { bidderWallet: 'w2', bidderTelegramId: 'u2', amount: 150, placedAt: now };
-  const bid3: Bid = { bidderWallet: 'w3', bidderTelegramId: 'u3', amount: 200, placedAt: now };
+  const bid1: Bid = { bidderWallet: 'w1', amount: 110, placedAt: now };
+  const bid2: Bid = { bidderWallet: 'w2', amount: 150, placedAt: now };
+  const bid3: Bid = { bidderWallet: 'w3', amount: 200, placedAt: now };
 
   const ea2 = placeBid(placeBid(placeBid(ea, bid1, now), bid2, now), bid3, now);
   assert.equal(ea2.currentPrice, 200);
@@ -66,8 +66,7 @@ import {
   const closeToExpiry = ea2.expiresAt - 60_000;
   const lateBid: Bid = {
     bidderWallet: 'w4',
-    bidderTelegramId: 'u4',
-    amount: 250,
+        amount: 250,
     placedAt: closeToExpiry,
   };
   const ea3 = placeBid(ea2, lateBid, closeToExpiry);
@@ -87,7 +86,7 @@ import {
     durationMinutes: 30,
     triggeredBy: 'opportunistic',
   });
-  const low: Bid = { bidderWallet: 'w', bidderTelegramId: 'u', amount: 50, placedAt: Date.now() };
+  const low: Bid = { bidderWallet: 'w', amount: 50, placedAt: Date.now() };
   assert.throws(() => placeBid(ra, low), /Bid too low/);
   console.log('Test 4 OK — low bid rejected with "Bid too low"');
 }

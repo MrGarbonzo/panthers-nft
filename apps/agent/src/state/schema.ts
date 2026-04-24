@@ -22,7 +22,6 @@ export interface PanthersState {
 export interface P2pListing {
   listingId: string;
   tokenId: string;
-  sellerTelegramId: string;
   sellerWallet: string;
   askingPriceUsdc: number;
   createdAt: number;
@@ -31,7 +30,6 @@ export interface P2pListing {
 
 export interface PendingSale {
   saleId: string;
-  telegramUserId: string;
   buyerWallet: string;
   agreedPriceUsdc: number;
   expiresAt: number;
@@ -58,7 +56,6 @@ export interface PoolAllocations {
 export interface NftRecord {
   tokenId: string;
   ownerWallet: string;
-  ownerTelegramId: string;
   usdcDeposited: number;
   currentNav: number;
   mintPrice: number;
@@ -91,14 +88,13 @@ export interface AuctionRecord {
 
 export interface Bid {
   bidderWallet: string;
-  bidderTelegramId: string;
   amount: number;
   placedAt: number;
 }
 
 export interface HagglingSession {
   sessionId: string;
-  telegramUserId: string;
+  buyerWallet: string;
   nftTokenId: string;
   agentFloor: number;
   agentCeiling: number;
@@ -118,7 +114,6 @@ export interface EscrowRecord {
   nftTokenId: string;
   buyerWallet: string;
   sellerWallet: string;
-  sellerTelegramId?: string;
   amount: number;
   feesUsdc: number;
   status: 'pending' | 'released' | 'refunded';

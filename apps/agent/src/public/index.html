@@ -44,16 +44,15 @@ body {
   font-family: 'Bebas Neue', sans-serif;
   font-size: 28px;
   letter-spacing: 2px;
+  flex-shrink: 0;
 }
 .header-logo .orange { color: var(--orange); }
 .header-logo .cream { color: var(--cream); }
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 13px;
-  color: var(--muted);
+  gap: 12px;
+  flex-shrink: 0;
 }
 .live-dot {
   width: 8px; height: 8px;
@@ -66,12 +65,30 @@ body {
   50% { opacity: 0.7; box-shadow: 0 0 8px 4px rgba(232,120,14,0.2); }
 }
 .live-label { color: var(--orange); font-weight: 600; font-size: 12px; letter-spacing: 1px; }
+#last-updated { font-size: 13px; color: var(--muted); }
+
+.wallet-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 14px;
+  letter-spacing: 1px;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.wallet-btn:hover { border-color: var(--orange); background: var(--orange-dim); }
+.wallet-btn.connected { border-color: var(--orange); color: var(--orange); }
 
 .tab-nav {
   display: flex;
+  align-items: center;
   height: 48px;
   border-bottom: 1px solid var(--border);
   padding: 0 24px;
+  overflow-x: auto;
 }
 .tab-btn {
   background: none; border: none; color: var(--muted);
@@ -81,9 +98,15 @@ body {
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
+  white-space: nowrap;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 .tab-btn.active { color: var(--orange); border-bottom-color: var(--orange); }
 .tab-btn:hover { color: var(--text); }
+.tab-btn.disabled { color: #333; cursor: default; }
+.tab-btn.disabled:hover { color: #333; }
 
 .content { max-width: 1400px; margin: 0 auto; padding: 24px; }
 .tab-content { display: none; }
@@ -362,7 +385,6 @@ body {
   text-align: center;
   padding: 80px 24px;
 }
-.collection-empty .emoji { font-size: 64px; margin-bottom: 16px; }
 .collection-empty .title {
   font-family: 'Bebas Neue', sans-serif;
   font-size: 24px;
@@ -374,6 +396,252 @@ body {
   font-size: 16px;
   color: var(--muted);
   margin-top: 8px;
+}
+
+/* My NFTs */
+.my-nfts-connect {
+  text-align: center;
+  padding: 80px 24px;
+}
+.my-nfts-connect .title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 24px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+}
+.my-portfolio-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.my-nft-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.my-nft-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 20px;
+  transition: border-color 0.2s;
+}
+.my-nft-card:hover { border-color: var(--orange); }
+.my-nft-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 20px;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.my-nft-nav {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  color: var(--orange);
+  margin-bottom: 8px;
+}
+.my-nft-mint {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.disabled-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: #333;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: default;
+  margin-right: 6px;
+  position: relative;
+}
+.disabled-btn:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  margin-bottom: 4px;
+}
+
+/* Buy/Offer sections */
+.action-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+.action-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+.action-btn {
+  background: var(--orange);
+  border: none;
+  color: var(--bg);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 16px;
+  letter-spacing: 2px;
+  padding: 12px 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.action-btn:hover { opacity: 0.85; }
+.action-btn:disabled { opacity: 0.4; cursor: default; }
+.action-btn.secondary {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.action-btn.secondary:hover { border-color: var(--orange); }
+
+.payment-panel {
+  background: var(--surface2);
+  border: 1px solid var(--orange);
+  border-radius: 4px;
+  padding: 20px;
+  margin-top: 16px;
+}
+.payment-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.payment-row:last-child { border-bottom: none; }
+.payment-label {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+.payment-value {
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+  color: var(--text);
+}
+.payment-value.copyable {
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.payment-value.copyable:hover { color: var(--orange); }
+
+.offer-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  color: var(--text);
+  font-family: 'Space Mono', monospace;
+  font-size: 14px;
+  outline: none;
+  width: 160px;
+  margin-right: 12px;
+  transition: border-color 0.2s;
+}
+.offer-input:focus { border-color: var(--orange); }
+
+.inline-msg {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+}
+.inline-msg.error { background: rgba(212,43,30,0.1); border: 1px solid var(--red); color: var(--red); }
+.inline-msg.info { background: var(--orange-dim); border: 1px solid var(--orange); color: var(--orange); }
+.inline-msg.success { background: rgba(61,214,140,0.1); border: 1px solid var(--gain); color: var(--gain); }
+
+.toggle-link {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.2s;
+  user-select: none;
+}
+.toggle-link:hover { color: var(--orange); }
+
+/* About */
+.about-content {
+  max-width: 720px;
+}
+.about-content h2 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  letter-spacing: 2px;
+  color: var(--orange);
+  margin: 32px 0 12px;
+}
+.about-content h2:first-child { margin-top: 0; }
+.about-content p {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  color: var(--text);
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+.about-content .step {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.about-content .step-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  color: var(--orange);
+  line-height: 1;
+  flex-shrink: 0;
+}
+.about-content .step-text {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.about-content a {
+  color: var(--orange);
+  text-decoration: none;
+}
+.about-content a:hover { text-decoration: underline; }
+.about-content .mono {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-all;
+}
+.about-content .note {
+  background: var(--surface);
+  border-left: 3px solid var(--orange);
+  padding: 16px 20px;
+  margin-top: 24px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .footer {
@@ -403,8 +671,14 @@ body {
 
 @media (max-width: 768px) {
   .stat-bar { grid-template-columns: repeat(2, 1fr); }
+  .my-portfolio-summary { grid-template-columns: 1fr; }
   .columns { grid-template-columns: 1fr; }
   .nft-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .my-nft-grid { grid-template-columns: 1fr; }
+  .header { padding: 0 12px; }
+  .tab-nav { padding: 0 12px; }
+  .tab-btn { padding: 0 12px; font-size: 14px; }
+  .content { padding: 16px; }
 }
 </style>
 </head>
@@ -418,6 +692,7 @@ body {
     <div class="live-dot"></div>
     <span class="live-label">LIVE</span>
     <span id="last-updated"></span>
+    <button class="wallet-btn" id="wallet-btn" onclick="toggleWallet()">CONNECT WALLET</button>
   </div>
 </header>
 
@@ -425,6 +700,8 @@ body {
   <button class="tab-btn active" data-tab="fund">FUND</button>
   <button class="tab-btn" data-tab="collection">COLLECTION</button>
   <button class="tab-btn" data-tab="agent">AGENT</button>
+  <button class="tab-btn" data-tab="mynfts" id="tab-btn-mynfts">MY NFTS</button>
+  <button class="tab-btn" data-tab="about">ABOUT</button>
 </nav>
 
 <main class="content">
@@ -479,6 +756,47 @@ body {
       </div>
     </div>
   </div>
+
+  <!-- MY NFTS TAB -->
+  <div class="tab-content" id="tab-mynfts">
+    <div id="mynfts-content"></div>
+  </div>
+
+  <!-- ABOUT TAB -->
+  <div class="tab-content" id="tab-about">
+    <div class="about-content">
+      <h2>WHAT IS PANTHERS FUND</h2>
+      <p>Panthers Fund is an autonomous AI trading fund operating on the Solana blockchain. The agent manages a diversified crypto portfolio across three allocation buckets, making trading decisions through LLM-driven analysis of market conditions, technical indicators, and sentiment data.</p>
+      <p>Each NFT share represents proportional ownership of the fund's total value. Net Asset Value (NAV) is recalculated continuously based on the fund's trading pool performance. The agent operates 24/7 without human intervention.</p>
+
+      <h2>HOW TO BUY</h2>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">Connect your Phantom wallet using the button in the top right corner.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">Navigate to the My NFTs tab. Click "Buy an NFT Share" at the fixed price, or make a custom offer that the agent will evaluate.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">Send the exact USDC amount from your connected wallet to the agent's wallet address within the 30-minute window. The agent detects payment automatically and mints your NFT.</div>
+      </div>
+
+      <h2>HOW OWNERSHIP WORKS</h2>
+      <p>Panthers Fund NFTs are standard Solana NFTs. Ownership is wallet-native — whoever holds the NFT in their wallet owns that share of the fund. NFTs are freely tradeable on any Solana NFT marketplace.</p>
+      <p>NAV per share is calculated as total fund TVL divided by the number of outstanding NFTs. When the fund's trading pool grows, each share's NAV increases proportionally.</p>
+
+      <h2>VERIFYING THE AGENT</h2>
+      <p>The agent's identity is registered on-chain via the ERC-8004 registry on Base Sepolia:</p>
+      <p class="mono">0x8004A818BFB912233c491871b3d84c89A494BD9e</p>
+      <p>Mainnet registration will follow. The registry provides cryptographic proof that the agent controlling the fund wallet is the same entity registered on-chain.</p>
+
+      <div class="note">
+        panthers.fund is a convenience frontend. The canonical data lives on-chain — the agent's Solana wallet, NFT mint addresses, and USDC balances are all publicly verifiable through any Solana explorer. This dashboard reads from the agent's API, which reads from the chain.
+      </div>
+    </div>
+  </div>
 </main>
 
 <footer class="footer">PANTHERS FUND &middot; AUTONOMOUS AI TRADING &middot; POWERED BY SECRET NETWORK</footer>
@@ -488,6 +806,10 @@ let allNfts = [];
 let stats = null;
 let health = null;
 let hasError = false;
+let connectedWallet = null;
+let portfolio = null;
+let buyExpiryInterval = null;
+let offerExpiryInterval = null;
 
 const $ = id => document.getElementById(id);
 
@@ -497,7 +819,7 @@ function formatUSD(n) {
 function formatPct(n) {
   return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
 }
-function truncateMint(addr) {
+function truncAddr(addr) {
   if (!addr || addr.length < 8) return addr || '';
   return addr.slice(0, 4) + '...' + addr.slice(-4);
 }
@@ -508,14 +830,76 @@ function timeAgo(ts) {
   if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
   return Math.floor(diff / 86400) + 'd ago';
 }
+function formatCountdown(ms) {
+  if (ms <= 0) return 'EXPIRED';
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return m + ':' + String(s).padStart(2, '0');
+}
+function copyText(text) {
+  navigator.clipboard.writeText(text).catch(() => {});
+}
+
+// Wallet connection
+async function toggleWallet() {
+  if (connectedWallet) {
+    connectedWallet = null;
+    portfolio = null;
+    $('wallet-btn').textContent = 'CONNECT WALLET';
+    $('wallet-btn').classList.remove('connected');
+    updateMyNftsTabState();
+    renderMyNfts();
+    return;
+  }
+  await connectWallet();
+}
+
+async function connectWallet() {
+  const provider = window.solana;
+  if (!provider || !provider.isPhantom) {
+    alert('Phantom wallet not detected. Please install Phantom.');
+    return false;
+  }
+  try {
+    const resp = await provider.connect();
+    connectedWallet = resp.publicKey.toString();
+    $('wallet-btn').textContent = truncAddr(connectedWallet);
+    $('wallet-btn').classList.add('connected');
+    updateMyNftsTabState();
+    if ($('tab-mynfts').classList.contains('active')) {
+      await loadPortfolio();
+    }
+    return true;
+  } catch (e) {
+    console.error('Wallet connect failed:', e);
+    return false;
+  }
+}
+
+function updateMyNftsTabState() {
+  const btn = $('tab-btn-mynfts');
+  if (connectedWallet) {
+    btn.classList.remove('disabled');
+  } else {
+    btn.classList.add('disabled');
+  }
+}
 
 // Tab switching
 document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
+    const tab = btn.dataset.tab;
+    if (tab === 'mynfts' && !connectedWallet) {
+      const ok = await connectWallet();
+      if (!ok) return;
+    }
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
-    $('tab-' + btn.dataset.tab).classList.add('active');
+    $('tab-' + tab).classList.add('active');
+    if (tab === 'mynfts' && connectedWallet) {
+      await loadPortfolio();
+    }
   });
 });
 
@@ -608,7 +992,7 @@ function renderFund() {
         <tbody>
           ${stats.openPositions.map(p => `
             <tr>
-              <td>${truncateMint(p.tokenMint)}</td>
+              <td>${truncAddr(p.tokenMint)}</td>
               <td><span class="bucket-badge ${p.bucket}">${p.bucket.toUpperCase()}</span></td>
               <td>${formatUSD(p.entryPrice)}</td>
               <td>${formatUSD(p.sizeUsdc)}</td>
@@ -629,7 +1013,7 @@ function renderFund() {
       <div class="trade-item">
         <div class="trade-left">
           <span class="trade-side ${t.side}">${t.side.toUpperCase()}</span>
-          <span class="trade-token">${truncateMint(t.tokenMint)}</span>
+          <span class="trade-token">${truncAddr(t.tokenMint)}</span>
         </div>
         <div class="trade-right">
           <span class="trade-pnl" style="color:${t.pnl >= 0 ? 'var(--gain)' : 'var(--loss)'}">${t.pnl >= 0 ? '+' : ''}${formatUSD(t.pnl)}</span>
@@ -650,9 +1034,8 @@ function renderNfts(filter) {
   if (filtered.length === 0 && allNfts.length === 0) {
     grid.innerHTML = `
       <div class="collection-empty" style="grid-column:1/-1">
-        <div class="emoji">&#x1F406;</div>
         <div class="title">NO PANTHERS MINTED YET</div>
-        <div class="sub">THE FUND IS HUNTING</div>
+        <div class="sub">The fund is active and trading. NFT shares will appear here once minted.</div>
       </div>
     `;
     return;
@@ -712,7 +1095,7 @@ function renderAgent() {
     </div>
     <div class="stat-card">
       <div class="stat-label">AGENT WALLET</div>
-      <div class="stat-value" style="font-size:18px"><a href="${explorerUrl}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none">${truncateMint(wallet)}</a></div>
+      <div class="stat-value" style="font-size:18px"><a href="${explorerUrl}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none">${truncAddr(wallet)}</a></div>
       <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:11px">${wallet}</div>
     </div>
     <div class="stat-card">
@@ -778,6 +1161,270 @@ function renderAgent() {
     </div>
   `;
 }
+
+// ── My NFTs ──
+
+async function loadPortfolio() {
+  if (!connectedWallet) return;
+  const container = $('mynfts-content');
+  container.innerHTML = '<div class="empty-state">LOADING PORTFOLIO...</div>';
+  try {
+    const res = await fetch('/api/portfolio/' + connectedWallet);
+    if (!res.ok) throw new Error('Portfolio fetch failed');
+    portfolio = await res.json();
+  } catch (e) {
+    console.error('Portfolio load error:', e);
+    portfolio = { nfts: [], totalNavUsdc: 0, nftCount: 0 };
+  }
+  renderMyNfts();
+}
+
+function renderMyNfts() {
+  const container = $('mynfts-content');
+  if (!connectedWallet) {
+    container.innerHTML = `
+      <div class="my-nfts-connect">
+        <div class="title">CONNECT YOUR WALLET TO VIEW YOUR NFTS</div>
+        <button class="action-btn" onclick="connectWallet().then(ok => { if (ok) loadPortfolio(); })">CONNECT WALLET</button>
+      </div>
+    `;
+    return;
+  }
+
+  const nfts = portfolio?.nfts || [];
+  const totalNav = portfolio?.totalNavUsdc || 0;
+  const count = portfolio?.nftCount || 0;
+
+  let html = '';
+
+  // Portfolio summary
+  html += `
+    <div class="my-portfolio-summary">
+      <div class="stat-card">
+        <div class="stat-label">YOUR NFTS</div>
+        <div class="stat-value">${count}</div>
+        <div class="stat-sub">Panthers Fund Shares</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">TOTAL NAV</div>
+        <div class="stat-value" style="color:var(--orange)">${formatUSD(totalNav)}</div>
+        <div class="stat-sub">Current Value</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">WALLET</div>
+        <div class="stat-value" style="font-size:18px">${truncAddr(connectedWallet)}</div>
+        <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:11px">${connectedWallet}</div>
+      </div>
+    </div>
+  `;
+
+  // NFT cards
+  if (nfts.length > 0) {
+    html += '<div class="my-nft-grid">';
+    for (const nft of nfts) {
+      html += `
+        <div class="my-nft-card">
+          <div class="my-nft-name">${nft.name}</div>
+          <div class="my-nft-nav">${formatUSD(nft.navUsdc)}</div>
+          <div class="my-nft-mint">${truncAddr(nft.mint)}</div>
+          <div>
+            <span class="disabled-btn" data-tooltip="Coming soon">WITHDRAW</span>
+            <span class="disabled-btn" data-tooltip="Coming soon">CLAIM</span>
+            <span class="disabled-btn" data-tooltip="Coming soon">REDEEM</span>
+          </div>
+        </div>
+      `;
+    }
+    html += '</div>';
+  } else {
+    html += `
+      <div class="empty-state" style="margin-bottom:24px">
+        YOU DON'T HOLD ANY PANTHERS FUND NFTS YET
+      </div>
+    `;
+  }
+
+  // Buy section
+  html += `
+    <div class="action-section">
+      <div class="action-title">BUY AN NFT SHARE</div>
+      <button class="action-btn" id="buy-btn" onclick="handleBuy()">BUY AT FIXED PRICE</button>
+      <div id="buy-result"></div>
+    </div>
+  `;
+
+  // Offer section
+  html += `
+    <div class="action-section">
+      <div class="toggle-link" onclick="toggleOffer()" id="offer-toggle">MAKE AN OFFER &#9662;</div>
+      <div id="offer-section" style="display:none;margin-top:16px">
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">
+          <input type="number" class="offer-input" id="offer-amount" placeholder="USDC" min="0" step="0.01">
+          <button class="action-btn secondary" id="offer-btn" onclick="handleOffer()">SUBMIT OFFER</button>
+        </div>
+        <div id="offer-result"></div>
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+
+function toggleOffer() {
+  const sec = $('offer-section');
+  const toggle = $('offer-toggle');
+  if (sec.style.display === 'none') {
+    sec.style.display = 'block';
+    toggle.innerHTML = 'MAKE AN OFFER &#9652;';
+  } else {
+    sec.style.display = 'none';
+    toggle.innerHTML = 'MAKE AN OFFER &#9662;';
+  }
+}
+
+function renderPaymentPanel(containerId, data) {
+  const expiresAt = new Date(data.expiresAt).getTime();
+  const container = $(containerId);
+  container.innerHTML = `
+    <div class="payment-panel">
+      <div class="payment-row">
+        <span class="payment-label">SEND TO</span>
+        <span class="payment-value copyable" onclick="copyText('${data.agentWallet}')" title="Click to copy">${data.agentWallet}</span>
+      </div>
+      <div class="payment-row">
+        <span class="payment-label">EXACT AMOUNT</span>
+        <span class="payment-value" style="color:var(--orange);font-size:16px">${data.amountUsdc} USDC</span>
+      </div>
+      <div class="payment-row">
+        <span class="payment-label">EXPIRES IN</span>
+        <span class="payment-value" id="${containerId}-countdown" style="color:var(--orange)">--:--</span>
+      </div>
+      <div class="payment-row">
+        <span class="payment-label">NOTE</span>
+        <span class="payment-value" style="font-size:12px;color:var(--muted)">Send exactly this amount from your connected wallet</span>
+      </div>
+    </div>
+  `;
+
+  const intervalId = setInterval(() => {
+    const remaining = expiresAt - Date.now();
+    const el = document.getElementById(containerId + '-countdown');
+    if (!el) { clearInterval(intervalId); return; }
+    el.textContent = formatCountdown(remaining);
+    if (remaining <= 0) {
+      clearInterval(intervalId);
+      el.style.color = 'var(--loss)';
+    }
+  }, 1000);
+
+  if (containerId === 'buy-result') {
+    if (buyExpiryInterval) clearInterval(buyExpiryInterval);
+    buyExpiryInterval = intervalId;
+  } else {
+    if (offerExpiryInterval) clearInterval(offerExpiryInterval);
+    offerExpiryInterval = intervalId;
+  }
+}
+
+async function handleBuy() {
+  if (!connectedWallet) return;
+  const btn = $('buy-btn');
+  const resultEl = $('buy-result');
+  btn.disabled = true;
+  btn.textContent = 'PROCESSING...';
+  resultEl.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/buy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress: connectedWallet }),
+    });
+    const data = await res.json();
+
+    if (res.status === 200) {
+      renderPaymentPanel('buy-result', data);
+    } else if (res.status === 409) {
+      renderPaymentPanel('buy-result', {
+        agentWallet: data.agentWallet,
+        amountUsdc: data.amountUsdc,
+        expiresAt: data.expiresAt,
+      });
+      resultEl.insertAdjacentHTML('beforeend', '<div class="inline-msg info">You already have a pending purchase. Details above.</div>');
+    } else {
+      resultEl.innerHTML = `<div class="inline-msg error">${data.error || 'Something went wrong'}</div>`;
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = 'BUY AT FIXED PRICE';
+}
+
+async function handleOffer(overrideAmount) {
+  if (!connectedWallet) return;
+  const btn = $('offer-btn');
+  const resultEl = $('offer-result');
+  const amount = overrideAmount || parseFloat($('offer-amount').value);
+
+  if (!amount || amount <= 0 || isNaN(amount)) {
+    resultEl.innerHTML = '<div class="inline-msg error">Enter a valid USDC amount.</div>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'EVALUATING...';
+  resultEl.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress: connectedWallet, offerAmountUsdc: amount }),
+    });
+    const data = await res.json();
+
+    if (res.status === 409) {
+      renderPaymentPanel('offer-result', {
+        agentWallet: data.agentWallet,
+        amountUsdc: data.amountUsdc,
+        expiresAt: data.expiresAt,
+      });
+      resultEl.insertAdjacentHTML('beforeend', '<div class="inline-msg info">You already have a pending purchase.</div>');
+    } else if (res.status === 200) {
+      if (data.decision === 'accept') {
+        renderPaymentPanel('offer-result', {
+          agentWallet: data.agentWallet,
+          amountUsdc: data.amountUsdc,
+          expiresAt: data.expiresAt,
+        });
+        resultEl.insertAdjacentHTML('beforeend', `<div class="inline-msg success">Offer accepted: ${data.reason}</div>`);
+      } else if (data.decision === 'counter') {
+        resultEl.innerHTML = `
+          <div class="inline-msg info">
+            Counter-offer: ${formatUSD(data.counterAmountUsdc)} USDC<br>
+            <span style="font-size:13px;color:var(--muted)">${data.reason}</span>
+          </div>
+          <div style="margin-top:12px">
+            <button class="action-btn" onclick="handleOffer(${data.counterAmountUsdc})">ACCEPT ${formatUSD(data.counterAmountUsdc)}</button>
+          </div>
+        `;
+      } else {
+        resultEl.innerHTML = `<div class="inline-msg error">Offer rejected: ${data.reason}</div>`;
+      }
+    } else {
+      resultEl.innerHTML = `<div class="inline-msg error">${data.error || 'Something went wrong'}</div>`;
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = 'SUBMIT OFFER';
+}
+
+// Initial state
+updateMyNftsTabState();
+renderMyNfts();
 
 // Initial load
 fetchAll();

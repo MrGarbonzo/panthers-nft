@@ -310,6 +310,47 @@ export async function generateGroupReply(
   return llm.invokeForJson<GroupReplyResult>(system, user, 400);
 }
 
+export interface OfferEvaluation {
+  decision: 'accept' | 'reject' | 'counter';
+  counterAmountUsdc: number | null;
+  reason: string;
+}
+
+export async function evaluateOffer(
+  llm: LLM,
+  params: {
+    offerAmountUsdc: number;
+    askPriceUsdc: number;
+    tvl: number;
+    runwayDays: number;
+    totalMinted: number;
+  },
+): Promise<OfferEvaluation> {
+  const pctOfAsk = ((params.offerAmountUsdc / params.askPriceUsdc) * 100).toFixed(1);
+
+  const system =
+    'You are the Panthers Fund agent — an autonomous AI fund manager evaluating a purchase offer for a Panthers Fund NFT.\n' +
+    'You are direct, strategic, and protective of the fund\'s value.\n' +
+    'Respond ONLY with a JSON object, no other text. No markdown fences.';
+
+  const user =
+    `Current asking price: ${params.askPriceUsdc} USDC\n` +
+    `Offer received: ${params.offerAmountUsdc} USDC (${pctOfAsk}% of asking price)\n` +
+    `Fund TVL: ${params.tvl.toFixed(2)} USDC\n` +
+    `Agent runway: ${params.runwayDays.toFixed(0)} days\n` +
+    `Total NFTs minted: ${params.totalMinted}\n\n` +
+    'Respond with: {"decision": "accept"|"reject"|"counter", "counterAmountUsdc": number|null, "reason": "one sentence explanation"}\n\n' +
+    'Guidelines:\n' +
+    '- Offer >= 90% of asking price → lean toward accepting\n' +
+    '- Offer 70-90% of asking price → use your judgment based on runway and fund health. Counter if runway is healthy, accept if runway is tight.\n' +
+    '- Offer < 70% of asking price → lean toward rejecting\n' +
+    '- If countering, set counterAmountUsdc between the offer and the asking price\n' +
+    '- If accepting or rejecting, set counterAmountUsdc to null\n' +
+    '- Keep reason under 2 sentences';
+
+  return llm.invokeForJson<OfferEvaluation>(system, user, 300);
+}
+
 export interface HaggleIntentResult {
   intent: 'offer' | 'accept_last' | 'reject' | 'question' | 'other';
   offerAmount: number | null;

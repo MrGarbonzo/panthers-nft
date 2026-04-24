@@ -3,8 +3,6 @@ import type { WalletMonitor } from '../persona/wallet-monitor.js';
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
 import type { PublicCacheWriter } from '../public/cache.js';
-import type { PanthersBot } from '../telegram/bot.js';
-import type { PanthersState } from '../state/schema.js';
 
 const DEFAULT_CHECK_MS = 30 * 60 * 1000;
 
@@ -20,7 +18,6 @@ export class BridgeManager {
       adapter: PanthersStateAdapter;
       cacheWriter: PublicCacheWriter;
       agentBaseWallet: string;
-      bot: PanthersBot | null;
       dailyBurnRate: number;
       checkIntervalMs?: number;
     },
@@ -81,12 +78,6 @@ export class BridgeManager {
     this.bridgeInProgress = true;
 
     try {
-      if (this.params.bot) {
-        await this.params.bot.sendGroupMessage(
-          `Base infrastructure wallet low. Bridging ${bridgeAmount.toFixed(2)} USDC via CCTP. Est. 20 min.`,
-        ).catch(() => {});
-      }
-
       const result = await this.params.bridge.bridgeSolanaToBase({
         amountUsdc: bridgeAmount,
         destinationAddress: this.params.agentBaseWallet,
@@ -104,12 +95,6 @@ export class BridgeManager {
       }
 
       console.log('[BridgeManager] CCTP bridge settled.');
-
-      if (this.params.bot) {
-        await this.params.bot.sendGroupMessage(
-          'Bridge settled. Infrastructure funded. No human needed.',
-        ).catch(() => {});
-      }
     } finally {
       this.bridgeInProgress = false;
     }
