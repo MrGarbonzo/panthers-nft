@@ -53,7 +53,7 @@ export interface PublicBalanceServerParams {
   solanaWalletAddress?: string;
 }
 
-const DEFAULT_PORT = 3000;
+const DEFAULT_PORT = 8080;
 
 export class PublicBalanceServer {
   private server: Server | null = null;
