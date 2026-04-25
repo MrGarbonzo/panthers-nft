@@ -7,7 +7,8 @@ export type LlmTaskType =
   | 'trade'
   | 'nomination'
   | 'news_summary'
-  | 'offer';
+  | 'offer'
+  | 'moltbook_post';
 
 export interface LlmModelRouting {
   chat: string;
@@ -19,6 +20,7 @@ export interface LlmModelRouting {
   nomination: string;
   news_summary: string;
   offer: string;
+  moltbook_post: string;
 }
 
 export const DEFAULT_MODEL_ROUTING: LlmModelRouting = {
@@ -31,4 +33,5 @@ export const DEFAULT_MODEL_ROUTING: LlmModelRouting = {
   nomination: 'gemma3:4b',
   news_summary: 'gemma3:4b',
   offer: 'gemma3:4b',
+  moltbook_post: 'gemma3:4b',
 };

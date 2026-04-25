@@ -28,6 +28,8 @@ import { recalculateAllNavs } from './state/nav.js';
 import type { PanthersState } from './state/schema.js';
 import { XClient } from './social/x-client.js';
 import { XPostingLoop } from './social/x-posting-loop.js';
+import { MoltbookClient } from './moltbook/client.js';
+import { MoltbookPostingLoop } from './moltbook/posting-loop.js';
 
 const STALE_SALE_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -140,23 +142,25 @@ async function main(): Promise<void> {
         console.log('[registry] EVM_MNEMONIC not set — skipping ERC-8004 registration');
       } else {
         const { mnemonicToAccount } = await import('viem/accounts');
-        const { createErc8004Client } = await import('./registry/erc8004.js');
+        const { ERC8004Client, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA } = await import('@idiostasis/erc8004-client');
         const baseRpcUrl = process.env.BASE_RPC_URL ?? 'https://sepolia.base.org';
         const port = process.env.PORT ?? '3000';
         const account = mnemonicToAccount(evmMnemonic);
-        const registry = createErc8004Client({ account, rpcUrl: baseRpcUrl });
+        const wallet = { address: account.address, account, signTransaction: async () => '' };
+        const registry = new ERC8004Client(baseRpcUrl, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA, 'base-sepolia');
         const existingTokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
         if (!existingTokenId) {
-          const tokenId = await registry.register({
+          const result = await registry.register({
             name: 'Panthers Fund',
             description: 'Autonomous AI NFT fund on Solana',
             services: [{ name: 'dashboard', endpoint: `http://${agentHost}:${port}` }],
+            wallet,
           });
-          db.config.set(CONFIG.ERC8004_TOKEN_ID, tokenId.toString());
-          console.log(`[registry] registered, token ID: ${tokenId}`);
+          db.config.set(CONFIG.ERC8004_TOKEN_ID, result.tokenId.toString());
+          console.log(`[registry] registered, token ID: ${result.tokenId}`);
         } else {
-          const tokenId = BigInt(existingTokenId);
-          await registry.updateEndpoint(tokenId, 'dashboard', `http://${agentHost}:${port}`);
+          const tokenId = Number(existingTokenId);
+          await registry.updateEndpoint(tokenId, 'dashboard', `http://${agentHost}:${port}`, wallet);
           console.log(`[registry] endpoint updated, token ID: ${existingTokenId}`);
         }
       }
@@ -272,6 +276,7 @@ async function main(): Promise<void> {
           };
           await db.saveState(updated, adapter, cacheWriter);
           void xPostingLoop?.onEvent('donation_received', `${amount.toFixed(2)} USDC received`);
+          void moltbookLoop.onEvent('donation_received', `${amount.toFixed(2)} USDC received`);
           return;
         }
         if (match.status !== 'awaiting_payment') {
@@ -330,6 +335,7 @@ async function main(): Promise<void> {
           console.log(
             `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress} nftIndex=${nft?.nftIndex ?? '?'}`,
           );
+          void moltbookLoop.onEvent('nft_minted', `NFT #${result.tokenId} minted`);
         } catch (err) {
           console.error(`Failed to complete sale ${match.saleId}:`, err);
         }
@@ -469,6 +475,32 @@ async function main(): Promise<void> {
     console.log('[Boot] X posting skipped — credentials not configured');
   }
 
+  // Moltbook posting loop
+  const moltbookClient = new MoltbookClient();
+  const moltbookLoop = new MoltbookPostingLoop({
+    client: moltbookClient,
+    llmRouter,
+    personaCtx,
+    db,
+    adapter,
+  });
+  await moltbookLoop.initialize();
+
+  // Periodic market update posts
+  setInterval(() => {
+    void moltbookLoop.onEvent('market_update', 'periodic market observation');
+  }, 30 * 60 * 1000);
+
+  // Survival posts on critical/emergency
+  setInterval(async () => {
+    try {
+      const ctx = await personaCtx.getSurvivalContext();
+      if (ctx.survivalState === 'critical' || ctx.survivalState === 'emergency') {
+        void moltbookLoop.onEvent('survival', `Runway: ${ctx.estimatedRunwayDays.toFixed(1)} days`);
+      }
+    } catch {}
+  }, 6 * 60 * 60 * 1000);
+
   const tradingLoop = new TradingLoop({
     db,
     adapter,
@@ -478,7 +510,10 @@ async function main(): Promise<void> {
     connection,
     cacheWriter,
     personaCtx,
-    onTradeExecuted: (context) => void xPostingLoop?.onEvent('trade_executed', context),
+    onTradeExecuted: (context) => {
+      void xPostingLoop?.onEvent('trade_executed', context);
+      void moltbookLoop.onEvent('trade_executed', context);
+    },
   });
   tradingLoop.start();
   console.log('Trading loop started');

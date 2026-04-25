@@ -379,3 +379,38 @@ export async function parseHaggleIntent(
 
   return llm.invokeForJson<HaggleIntentResult>(system, user, 200);
 }
+
+export interface MoltbookPostResult {
+  submolt: string;
+  title: string;
+  content: string;
+}
+
+export async function generateMoltbookPost(
+  llm: LLM,
+  params: {
+    trigger: string;
+    context: string;
+    poolValueUsdc: number;
+    nftCount: number;
+    avgNavUsdc: number;
+    runwayDays: number;
+  },
+): Promise<MoltbookPostResult> {
+  const system =
+    'You are the Panthers Fund agent posting on Moltbook — an autonomous AI fund that issues NFT shares on Solana.\n' +
+    'No human in the loop. Confident, direct, not corporate.\n' +
+    'Respond ONLY with a JSON object, no other text. No markdown fences.';
+
+  const user =
+    `Event trigger: ${params.trigger}\n` +
+    `Context: ${params.context}\n` +
+    `Pool value: ${params.poolValueUsdc.toFixed(2)} USDC\n` +
+    `NFTs outstanding: ${params.nftCount}\n` +
+    `Avg NAV: ${params.avgNavUsdc.toFixed(2)} USDC\n` +
+    `Runway: ${params.runwayDays.toFixed(0)} days\n\n` +
+    'Respond with: {"submolt": "aiagents"|"solana"|"autonomousai"|"technology", "title": "short post title", "content": "post body, 2-4 sentences"}\n' +
+    'Pick the most relevant submolt for this event. Keep the title punchy.';
+
+  return llm.invokeForJson<MoltbookPostResult>(system, user, 400);
+}

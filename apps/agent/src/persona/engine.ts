@@ -69,6 +69,7 @@ export class PersonaEngine {
       nomination: 'Nominate a token and return only JSON. No preamble.',
       news_summary: 'Summarize market context in 1-2 short sentences, in character. No markdown.',
       offer: 'Evaluate the purchase offer and return only JSON. Be strategic — protect fund value but close deals when appropriate.',
+      moltbook_post: 'Write a Moltbook post. Confident, direct, not corporate. Return only JSON. No markdown fences.',
     };
     return instructions[task];
   }

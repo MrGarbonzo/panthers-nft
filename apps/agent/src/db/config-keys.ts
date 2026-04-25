@@ -24,4 +24,11 @@ export const CONFIG = {
   SOLANA_KEYPAIR: 'solana_keypair',
   NFT_PRICE_USDC: 'nft_price_usdc',
   ERC8004_TOKEN_ID: 'erc8004_token_id',
+
+  MOLTBOOK_API_KEY: 'moltbook_api_key',
+  MOLTBOOK_CLAIM_URL: 'moltbook_claim_url',
+  MOLTBOOK_VERIFIED: 'moltbook_verified',
+  MOLTBOOK_SUBMOLTS_SEEDED: 'moltbook_submolts_seeded',
+  MOLTBOOK_NAME: 'moltbook_name',
+  MOLTBOOK_DESCRIPTION: 'moltbook_description',
 } as const;
