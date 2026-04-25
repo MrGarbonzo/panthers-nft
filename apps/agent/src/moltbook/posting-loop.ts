@@ -47,7 +47,7 @@ export class MoltbookPostingLoop {
     } else {
       const name = db.config.get(CONFIG.MOLTBOOK_NAME, {
         envKey: 'MOLTBOOK_NAME',
-        defaultValue: 'Panthers Fund',
+        defaultValue: 'Panthers_Fund',
       })!;
       const description = db.config.get(CONFIG.MOLTBOOK_DESCRIPTION, {
         envKey: 'MOLTBOOK_DESCRIPTION',

@@ -22,10 +22,11 @@ export class LLMRouter {
   ) {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl;
-    this.routing = config.getJson<LlmModelRouting>(
+    const cached = config.getJson<Partial<LlmModelRouting>>(
       CONFIG.LLM_MODEL_ROUTING,
-      DEFAULT_MODEL_ROUTING,
+      {},
     );
+    this.routing = { ...DEFAULT_MODEL_ROUTING, ...cached };
     console.log('[LLMRouter] Model routing:', JSON.stringify(this.routing));
   }
 
