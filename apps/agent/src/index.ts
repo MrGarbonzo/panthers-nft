@@ -129,6 +129,42 @@ async function main(): Promise<void> {
   });
   publicServer.start();
 
+  // ERC-8004 registration
+  try {
+    const agentHost = process.env.AGENT_HOST;
+    if (!agentHost) {
+      console.log('[registry] AGENT_HOST not set — skipping ERC-8004 registration');
+    } else {
+      const evmMnemonic = process.env.EVM_MNEMONIC;
+      if (!evmMnemonic) {
+        console.log('[registry] EVM_MNEMONIC not set — skipping ERC-8004 registration');
+      } else {
+        const { mnemonicToAccount } = await import('viem/accounts');
+        const { createErc8004Client } = await import('./registry/erc8004.js');
+        const baseRpcUrl = process.env.BASE_RPC_URL ?? 'https://sepolia.base.org';
+        const port = process.env.PORT ?? '3000';
+        const account = mnemonicToAccount(evmMnemonic);
+        const registry = createErc8004Client({ account, rpcUrl: baseRpcUrl });
+        const existingTokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
+        if (!existingTokenId) {
+          const tokenId = await registry.register({
+            name: 'Panthers Fund',
+            description: 'Autonomous AI NFT fund on Solana',
+            services: [{ name: 'dashboard', endpoint: `http://${agentHost}:${port}` }],
+          });
+          db.config.set(CONFIG.ERC8004_TOKEN_ID, tokenId.toString());
+          console.log(`[registry] registered, token ID: ${tokenId}`);
+        } else {
+          const tokenId = BigInt(existingTokenId);
+          await registry.updateEndpoint(tokenId, 'dashboard', `http://${agentHost}:${port}`);
+          console.log(`[registry] endpoint updated, token ID: ${existingTokenId}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[registry] ERC-8004 registration failed (non-fatal):', err);
+  }
+
   if (devMode) {
     console.log('DEV_MODE=true — storage-only boot');
     console.log('Panthers agent initialized (storage-only mode)');

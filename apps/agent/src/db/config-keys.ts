@@ -23,4 +23,5 @@ export const CONFIG = {
   LLM_MODEL_ROUTING: 'llm_model_routing',
   SOLANA_KEYPAIR: 'solana_keypair',
   NFT_PRICE_USDC: 'nft_price_usdc',
+  ERC8004_TOKEN_ID: 'erc8004_token_id',
 } as const;
