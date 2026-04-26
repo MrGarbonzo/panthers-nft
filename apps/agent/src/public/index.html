@@ -514,6 +514,9 @@ body {
   color: var(--text);
 }
 .action-btn.secondary:hover { border-color: var(--orange); }
+.action-btn.small { font-size: 13px; padding: 6px 14px; letter-spacing: 1px; }
+.action-btn.small.danger { background: #cc3333; }
+.action-btn.small.danger:hover { opacity: 0.85; }
 
 .payment-panel {
   background: var(--surface2);
@@ -1227,11 +1230,11 @@ function renderMyNfts() {
           <div class="my-nft-name">${nft.name}</div>
           <div class="my-nft-nav">${formatUSD(nft.navUsdc)}</div>
           <div class="my-nft-mint">${truncAddr(nft.mint)}</div>
-          <div>
-            <span class="disabled-btn" data-tooltip="Coming soon">WITHDRAW</span>
-            <span class="disabled-btn" data-tooltip="Coming soon">CLAIM</span>
-            <span class="disabled-btn" data-tooltip="Coming soon">REDEEM</span>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+            <button class="action-btn small" onclick="handleDestroy('${nft.tokenId}','${nft.mint}',${nft.navUsdc})">REDEEM & DESTROY</button>
+            <button class="action-btn small secondary" onclick="showAddFunds('${nft.tokenId}')">ADD FUNDS</button>
           </div>
+          <div id="nft-action-${nft.tokenId}" style="margin-top:8px"></div>
         </div>
       `;
     }
@@ -1420,6 +1423,113 @@ async function handleOffer(overrideAmount) {
   }
   btn.disabled = false;
   btn.textContent = 'SUBMIT OFFER';
+}
+
+async function handleDestroy(tokenId, mint, nav) {
+  if (!connectedWallet) return;
+  const el = document.getElementById('nft-action-' + tokenId);
+  if (!el) return;
+
+  el.innerHTML = '<div style="color:var(--muted);font-size:13px">Loading redemption details...</div>';
+
+  try {
+    const res = await fetch('/api/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress: connectedWallet, tokenId }),
+    });
+    const data = await res.json();
+
+    if (res.status !== 200) {
+      el.innerHTML = '<div class="inline-msg error">' + (data.error || 'Failed to get redemption info') + '</div>';
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="payment-panel" style="border-color:#cc3333">
+        <div style="color:#cc3333;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;margin-bottom:8px">REDEEM FUNDS & DESTROY NFT</div>
+        <div class="payment-row">
+          <span class="payment-label">CURRENT NAV</span>
+          <span class="payment-value" style="color:var(--orange)">${formatUSD(data.currentNav)} USDC</span>
+        </div>
+        <div class="payment-row">
+          <span class="payment-label">FEE</span>
+          <span class="payment-value">${(data.feePct * 100).toFixed(0)}% (agent infrastructure)</span>
+        </div>
+        <div class="payment-row">
+          <span class="payment-label">YOU RECEIVE</span>
+          <span class="payment-value" style="color:var(--gain);font-size:16px">~${formatUSD(data.estimatedReturnUsdc)} USDC</span>
+        </div>
+        <div class="payment-row">
+          <span class="payment-label">SEND NFT TO</span>
+          <span class="payment-value copyable" onclick="copyText('${data.agentWallet}')" title="Click to copy">${data.agentWallet}</span>
+        </div>
+        <div class="payment-row">
+          <span class="payment-label">NFT MINT</span>
+          <span class="payment-value copyable" onclick="copyText('${data.nftMint}')" title="Click to copy" style="font-size:12px">${data.nftMint}</span>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:var(--muted)">
+          Send your NFT to the agent wallet using Phantom's Send feature. USDC will be returned to your wallet automatically.
+        </div>
+        <button class="action-btn small" style="margin-top:12px" onclick="document.getElementById('nft-action-${tokenId}').innerHTML=''">CLOSE</button>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
+  }
+}
+
+function showAddFunds(tokenId) {
+  const el = document.getElementById('nft-action-' + tokenId);
+  if (!el) return;
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <input type="number" class="offer-input" id="add-funds-amount-${tokenId}" placeholder="USDC" min="0.01" step="0.01" style="width:100px">
+      <button class="action-btn small secondary" onclick="handleAddFunds('${tokenId}')">SEND</button>
+      <button class="action-btn small" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border)" onclick="document.getElementById('nft-action-${tokenId}').innerHTML=''">CANCEL</button>
+    </div>
+    <div id="add-funds-result-${tokenId}"></div>
+  `;
+}
+
+async function handleAddFunds(tokenId) {
+  if (!connectedWallet) return;
+  const input = document.getElementById('add-funds-amount-' + tokenId);
+  const resultEl = document.getElementById('add-funds-result-' + tokenId);
+  const amount = parseFloat(input.value);
+
+  if (!amount || amount <= 0 || isNaN(amount)) {
+    resultEl.innerHTML = '<div class="inline-msg error">Enter a valid USDC amount.</div>';
+    return;
+  }
+
+  resultEl.innerHTML = '<div style="color:var(--muted);font-size:13px">Processing...</div>';
+
+  try {
+    const res = await fetch('/api/add-funds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress: connectedWallet, tokenId, amountUsdc: amount }),
+    });
+    const data = await res.json();
+
+    if (res.status === 200) {
+      const el = document.getElementById('nft-action-' + tokenId);
+      renderPaymentPanel('nft-action-' + tokenId, data);
+    } else if (res.status === 409) {
+      renderPaymentPanel('nft-action-' + tokenId, {
+        agentWallet: data.agentWallet,
+        amountUsdc: data.amountUsdc,
+        expiresAt: data.expiresAt,
+      });
+      resultEl.insertAdjacentHTML('beforeend', '<div class="inline-msg info">You already have a pending payment.</div>');
+    } else {
+      resultEl.innerHTML = '<div class="inline-msg error">' + (data.error || 'Something went wrong') + '</div>';
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
+  }
 }
 
 // Initial state

@@ -78,3 +78,56 @@ export async function completeSale(params: {
 
   return { mintAddress, tokenId };
 }
+
+export async function addFundsToNft(params: {
+  db: PanthersDb;
+  adapter: PanthersStateAdapter;
+  saleId: string;
+  targetTokenId: string;
+  confirmedAmountUsdc: number;
+  txSignature: string;
+  cacheWriter?: PublicCacheWriter;
+}): Promise<{ tokenId: string; newNav: number }> {
+  const state = await params.db.loadState(params.adapter);
+
+  const pendingSale = state.pendingSales[params.saleId];
+  if (!pendingSale) {
+    throw new Error(`Pending sale not found: ${params.saleId}`);
+  }
+  if (pendingSale.status !== 'awaiting_payment') {
+    throw new Error(
+      `Pending sale ${params.saleId} is not awaiting payment (status=${pendingSale.status})`,
+    );
+  }
+
+  const nft = state.nfts[params.targetTokenId];
+  if (!nft) {
+    throw new Error(`NFT not found: ${params.targetTokenId}`);
+  }
+
+  const updatedNft = {
+    ...nft,
+    usdcDeposited: nft.usdcDeposited + params.confirmedAmountUsdc,
+    currentNav: nft.currentNav + params.confirmedAmountUsdc,
+  };
+
+  let nextState = {
+    ...state,
+    nfts: { ...state.nfts, [params.targetTokenId]: updatedNft },
+    pool: {
+      ...state.pool,
+      totalUsdcDeposited: state.pool.totalUsdcDeposited + params.confirmedAmountUsdc,
+      totalUsdcCurrentValue: state.pool.totalUsdcCurrentValue + params.confirmedAmountUsdc,
+    },
+    pendingSales: {
+      ...state.pendingSales,
+      [params.saleId]: { ...pendingSale, status: 'paid' as const },
+    },
+  };
+
+  nextState = recalculateAllNavs(nextState);
+  await params.db.saveState(nextState, params.adapter, params.cacheWriter);
+
+  const finalNft = nextState.nfts[params.targetTokenId];
+  return { tokenId: params.targetTokenId, newNav: finalNft.currentNav };
+}

@@ -8,7 +8,7 @@ import { initializeSolanaWallet } from './solana/wallet.js';
 import { initializeUmi } from './solana/umi-client.js';
 import { UsdcMonitor, type InboundTransfer } from './solana/monitor.js';
 import { NftMonitor } from './solana/nft-monitor.js';
-import { completeSale } from './solana/deposit.js';
+import { completeSale, addFundsToNft } from './solana/deposit.js';
 import { LLMRouter } from './llm/router.js';
 import { BirdeyeClient } from './trading/birdeye.js';
 import { JupiterClient } from './trading/jupiter.js';
@@ -318,26 +318,45 @@ async function main(): Promise<void> {
           return;
         }
 
-        try {
-          const result = await completeSale({
-            db,
-            adapter,
-            umi,
-            rpcUrl: solanaRpcUrl,
-            saleId: match.saleId,
-            confirmedAmountUsdc: transfer.amountUsdc,
-            txSignature: transfer.txSignature,
-            cacheWriter,
-            agentPublicUrl,
-          });
-          const updatedState = await db.loadState(adapter);
-          const nft = updatedState.nfts[result.tokenId];
-          console.log(
-            `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress} nftIndex=${nft?.nftIndex ?? '?'}`,
-          );
-          void moltbookLoop.onEvent('nft_minted', `NFT #${result.tokenId} minted`);
-        } catch (err) {
-          console.error(`Failed to complete sale ${match.saleId}:`, err);
+        if (match.type === 'add_funds' && match.targetTokenId) {
+          try {
+            const result = await addFundsToNft({
+              db,
+              adapter,
+              saleId: match.saleId,
+              targetTokenId: match.targetTokenId,
+              confirmedAmountUsdc: transfer.amountUsdc,
+              txSignature: transfer.txSignature,
+              cacheWriter,
+            });
+            console.log(
+              `[AddFunds] Completed: tokenId=${result.tokenId} newNav=${result.newNav.toFixed(2)}`,
+            );
+          } catch (err) {
+            console.error(`Failed to add funds for ${match.saleId}:`, err);
+          }
+        } else {
+          try {
+            const result = await completeSale({
+              db,
+              adapter,
+              umi,
+              rpcUrl: solanaRpcUrl,
+              saleId: match.saleId,
+              confirmedAmountUsdc: transfer.amountUsdc,
+              txSignature: transfer.txSignature,
+              cacheWriter,
+              agentPublicUrl,
+            });
+            const updatedState = await db.loadState(adapter);
+            const nft = updatedState.nfts[result.tokenId];
+            console.log(
+              `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress} nftIndex=${nft?.nftIndex ?? '?'}`,
+            );
+            void moltbookLoop.onEvent('nft_minted', `NFT #${result.tokenId} minted`);
+          } catch (err) {
+            console.error(`Failed to complete sale ${match.saleId}:`, err);
+          }
         }
       },
     });
@@ -359,7 +378,10 @@ async function main(): Promise<void> {
         console.log(`[NftMonitor] Unmatched NFT inbound: ${mintAddress}`);
         return;
       }
-      const feePct = currentState.agentConfig.feePctOnBurn;
+      const feePct = Number(db.config.get(CONFIG.REDEEM_FEE_PCT, {
+        envKey: 'REDEEM_FEE_PCT',
+        defaultValue: '0.10',
+      }));
       const feesUsdc = nft.currentNav * feePct;
       const withdrawnUsdc = nft.currentNav - feesUsdc;
 

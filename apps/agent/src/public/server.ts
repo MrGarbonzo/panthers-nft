@@ -346,6 +346,7 @@ export class PublicBalanceServer {
     const owned = results.filter((r) => r !== null);
 
     const nfts = owned.map((nft) => ({
+      tokenId: nft.tokenId,
       mint: nft.mintAddress,
       name: nft.name,
       acquiredAt: new Date(nft.mintedAt).toISOString(),
@@ -366,7 +367,6 @@ export class PublicBalanceServer {
   private static readonly POST_STUBS: Record<string, string> = {
     '/api/withdraw': 'POST /api/withdraw',
     '/api/claim': 'POST /api/claim',
-    '/api/redeem': 'POST /api/redeem',
   };
 
   private async handlePost(urlPath: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -379,6 +379,18 @@ export class PublicBalanceServer {
     if (urlPath === '/api/offer') {
       const body = await this.readBody(req);
       const result = await this.handleOffer(body);
+      this.respondJson(res, result.status, result.body);
+      return;
+    }
+    if (urlPath === '/api/redeem') {
+      const body = await this.readBody(req);
+      const result = await this.handleRedeem(body);
+      this.respondJson(res, result.status, result.body);
+      return;
+    }
+    if (urlPath === '/api/add-funds') {
+      const body = await this.readBody(req);
+      const result = await this.handleAddFunds(body);
       this.respondJson(res, result.status, result.body);
       return;
     }
@@ -643,6 +655,157 @@ export class PublicBalanceServer {
       body: {
         decision: 'reject',
         reason: evaluation.reason,
+      },
+    };
+  }
+
+  private async handleRedeem(rawBody: string): Promise<{ status: number; body: unknown }> {
+    const db = this.params.db;
+    const adapter = this.params.adapter;
+    if (!db || !adapter) {
+      return { status: 503, body: { error: 'Database not available' } };
+    }
+
+    let parsed: { walletAddress?: string; tokenId?: string };
+    try {
+      parsed = JSON.parse(rawBody);
+    } catch {
+      return { status: 400, body: { error: 'Invalid JSON body' } };
+    }
+
+    const { walletAddress, tokenId } = parsed;
+    if (!walletAddress || typeof walletAddress !== 'string') {
+      return { status: 400, body: { error: 'walletAddress is required' } };
+    }
+    if (!tokenId || typeof tokenId !== 'string') {
+      return { status: 400, body: { error: 'tokenId is required' } };
+    }
+
+    const state = await db.loadState(adapter);
+    const nft = state.nfts[tokenId];
+    if (!nft) {
+      return { status: 404, body: { error: 'NFT not found' } };
+    }
+    if (nft.ownerWallet.toLowerCase() !== walletAddress.toLowerCase()) {
+      return { status: 403, body: { error: 'You do not own this NFT' } };
+    }
+
+    const feePct = Number(db.config.get(CONFIG.REDEEM_FEE_PCT, {
+      envKey: 'REDEEM_FEE_PCT',
+      defaultValue: '0.10',
+    }));
+    const feesUsdc = nft.currentNav * feePct;
+    const estimatedReturnUsdc = Math.round((nft.currentNav - feesUsdc) * 100) / 100;
+
+    console.log(
+      `[Redeem] wallet=${walletAddress.slice(0, 8)}... tokenId=${tokenId} nav=${nft.currentNav} fee=${(feePct * 100).toFixed(0)}% return=${estimatedReturnUsdc}`,
+    );
+
+    return {
+      status: 200,
+      body: {
+        agentWallet: this.solanaWalletAddress,
+        nftMint: nft.mintAddress,
+        currentNav: nft.currentNav,
+        feePct,
+        estimatedReturnUsdc,
+        instructions: `Send your NFT (mint: ${nft.mintAddress}) to ${this.solanaWalletAddress}. You will receive approximately ${estimatedReturnUsdc} USDC back automatically. A ${(feePct * 100).toFixed(0)}% fee is deducted for agent infrastructure.`,
+      },
+    };
+  }
+
+  private async handleAddFunds(rawBody: string): Promise<{ status: number; body: unknown }> {
+    const db = this.params.db;
+    const adapter = this.params.adapter;
+    if (!db || !adapter) {
+      return { status: 503, body: { error: 'Database not available' } };
+    }
+
+    let parsed: { walletAddress?: string; tokenId?: string; amountUsdc?: number };
+    try {
+      parsed = JSON.parse(rawBody);
+    } catch {
+      return { status: 400, body: { error: 'Invalid JSON body' } };
+    }
+
+    const { walletAddress, tokenId, amountUsdc } = parsed;
+    if (!walletAddress || typeof walletAddress !== 'string') {
+      return { status: 400, body: { error: 'walletAddress is required' } };
+    }
+    if (!tokenId || typeof tokenId !== 'string') {
+      return { status: 400, body: { error: 'tokenId is required' } };
+    }
+    if (typeof amountUsdc !== 'number' || amountUsdc <= 0 || !isFinite(amountUsdc)) {
+      return { status: 400, body: { error: 'amountUsdc must be a positive number' } };
+    }
+
+    try {
+      const pk = new PublicKey(walletAddress);
+      if (!PublicKey.isOnCurve(pk.toBytes())) throw new Error();
+    } catch {
+      return { status: 400, body: { error: 'Invalid wallet address' } };
+    }
+
+    const state = await db.loadState(adapter);
+    const nft = state.nfts[tokenId];
+    if (!nft) {
+      return { status: 404, body: { error: 'NFT not found' } };
+    }
+    if (nft.ownerWallet.toLowerCase() !== walletAddress.toLowerCase()) {
+      return { status: 403, body: { error: 'You do not own this NFT' } };
+    }
+
+    const now = Date.now();
+    const existing = Object.values(state.pendingSales).find(
+      (s) =>
+        s.buyerWallet.toLowerCase() === walletAddress.toLowerCase() &&
+        s.status === 'awaiting_payment' &&
+        s.expiresAt > now,
+    );
+    if (existing) {
+      return {
+        status: 409,
+        body: {
+          error: 'pending_sale_exists',
+          expiresAt: new Date(existing.expiresAt).toISOString(),
+          agentWallet: this.solanaWalletAddress,
+          amountUsdc: existing.agreedPriceUsdc,
+        },
+      };
+    }
+
+    const saleId = uuidv4();
+    const expiresAt = now + BUY_EXPIRY_MS;
+
+    const nextState = {
+      ...state,
+      pendingSales: {
+        ...state.pendingSales,
+        [saleId]: {
+          saleId,
+          buyerWallet: walletAddress,
+          agreedPriceUsdc: amountUsdc,
+          expiresAt,
+          status: 'awaiting_payment' as const,
+          createdAt: now,
+          type: 'add_funds' as const,
+          targetTokenId: tokenId,
+        },
+      },
+    };
+    await db.saveState(nextState, adapter, this.params.cacheWriter);
+
+    console.log(
+      `[AddFunds] Created pending add-funds ${saleId} for ${walletAddress.slice(0, 8)}... tokenId=${tokenId} amount=${amountUsdc} USDC`,
+    );
+
+    return {
+      status: 200,
+      body: {
+        agentWallet: this.solanaWalletAddress,
+        amountUsdc,
+        expiresAt: new Date(expiresAt).toISOString(),
+        note: `Send exactly ${amountUsdc} USDC to add funds to your NFT position`,
       },
     };
   }

@@ -36,6 +36,8 @@ export interface PendingSale {
   status: 'awaiting_payment' | 'paid' | 'expired';
   createdAt: number;
   listingId?: string;
+  type?: 'buy' | 'add_funds';
+  targetTokenId?: string;
 }
 
 export interface PoolState {
@@ -186,7 +188,7 @@ export function defaultPanthersState(): PanthersState {
       lastUpdatedAt: 0,
     },
     agentConfig: {
-      feePctOnBurn: 0.02,
+      feePctOnBurn: 0.10,
       haggleAggressiveness: 0.5,
       tradingStrategyActive: 'trend_follow',
     },
