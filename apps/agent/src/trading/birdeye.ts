@@ -162,18 +162,22 @@ export class BirdeyeClient {
       },
     };
 
+    const encodedPayment = Buffer.from(
+      JSON.stringify(paymentPayload),
+    ).toString('base64');
+
     const retryRes = await fetch(originalUrl, {
       headers: {
         'x-chain': 'solana',
         accept: 'application/json',
-        'PAYMENT-RESPONSE': Buffer.from(
-          JSON.stringify(paymentPayload),
-        ).toString('base64'),
+        'Payment-Response': encodedPayment,
+        'X-PAYMENT': encodedPayment,
       },
     });
 
     if (!retryRes.ok && retryRes.status !== 200) {
-      throw new Error(`x402: retry after payment failed: ${retryRes.status}`);
+      const body = await retryRes.text().catch(() => '');
+      throw new Error(`x402: retry after payment failed: ${retryRes.status} ${body}`);
     }
     return retryRes;
   }
