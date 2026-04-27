@@ -6,6 +6,23 @@ export interface PersonalFund {
   lastUpdatedAt: number;
 }
 
+export interface TradingDecisionRecord {
+  id: string;
+  bucket: 'core' | 'top10' | 'llm';
+  side: 'buy' | 'sell';
+  tokenSymbol: string;
+  tokenMint: string;
+  proposedAmountUsdc: number;
+  decision: 'approve' | 'reject' | 'wait';
+  reasoning: string;
+  rsi: number;
+  trend: string;
+  executed: boolean;
+  paperTrade: boolean;
+  txSignature?: string;
+  timestamp: number;
+}
+
 export type ActivityType = 'purchase' | 'add_funds' | 'redeem';
 
 export interface ActivityRecord {
@@ -30,6 +47,7 @@ export interface PanthersState {
   agentConfig: AgentConfig;
   personalFund: PersonalFund;
   activityLog?: ActivityRecord[];
+  tradingDecisionLog?: TradingDecisionRecord[];
 }
 
 export interface P2pListing {
@@ -214,6 +232,21 @@ export function defaultPanthersState(): PanthersState {
     },
     activityLog: [],
   };
+}
+
+const MAX_TRADING_DECISION_LOG = 200;
+
+export function appendTradingDecision(
+  state: PanthersState,
+  entry: Omit<TradingDecisionRecord, 'id' | 'timestamp'>,
+): PanthersState {
+  const record: TradingDecisionRecord = {
+    ...entry,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: Date.now(),
+  };
+  const log = [...(state.tradingDecisionLog ?? []), record].slice(-MAX_TRADING_DECISION_LOG);
+  return { ...state, tradingDecisionLog: log };
 }
 
 const MAX_ACTIVITY_LOG = 200;

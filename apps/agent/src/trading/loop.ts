@@ -2,10 +2,11 @@ import type { Connection } from '@solana/web3.js';
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
 import type { LLMRouter } from '../llm/router.js';
-import type {
-  PanthersState,
-  Position,
-  TradeRecord,
+import {
+  appendTradingDecision,
+  type PanthersState,
+  type Position,
+  type TradeRecord,
 } from '../state/schema.js';
 import {
   BirdeyeClient,
@@ -361,7 +362,23 @@ export class TradingLoop {
         `${decision.decision}: ${decision.reasoning}`,
     );
 
-    if (decision.decision !== 'approve') return state;
+    if (decision.decision !== 'approve') {
+      state = appendTradingDecision(state, {
+        bucket: args.bucket,
+        side: args.side,
+        tokenSymbol: args.tokenSymbol,
+        tokenMint: args.tokenMint,
+        proposedAmountUsdc: args.proposedAmountUsdc,
+        decision: decision.decision,
+        reasoning: decision.reasoning,
+        rsi: args.signals.rsi,
+        trend: args.signals.trend,
+        executed: false,
+        paperTrade: !!this.params.paperTrading,
+      });
+      await this.params.db.saveState(state, this.params.adapter, this.params.cacheWriter);
+      return state;
+    }
 
     const inputMint = args.side === 'buy' ? USDC_MINT : args.tokenMint;
     const outputMint = args.side === 'buy' ? args.tokenMint : USDC_MINT;
@@ -463,6 +480,28 @@ export class TradingLoop {
     };
 
     nextState = recalculateAllNavs(nextState);
+    nextState = appendTradingDecision(nextState, {
+      bucket: args.bucket,
+      side: args.side,
+      tokenSymbol: args.tokenSymbol,
+      tokenMint: args.tokenMint,
+      proposedAmountUsdc: args.proposedAmountUsdc,
+      decision: 'approve',
+      reasoning: decision.reasoning,
+      rsi: args.signals.rsi,
+      trend: args.signals.trend,
+      executed: true,
+      paperTrade: !!this.params.paperTrading,
+      txSignature,
+    });
+
+    if (this.params.onTradeExecuted) {
+      const mode = this.params.paperTrading ? '[PAPER] ' : '';
+      this.params.onTradeExecuted(
+        `${mode}${args.side} ${args.tokenSymbol} ${args.proposedAmountUsdc.toFixed(2)} USDC (${args.bucket})`,
+      );
+    }
+
     return nextState;
   }
 }

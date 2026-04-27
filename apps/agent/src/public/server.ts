@@ -134,6 +134,12 @@ export class PublicBalanceServer {
 
       const portfolioMatch = urlPath.match(/^\/api\/portfolio\/([^/]+)$/);
       const activityMatch = urlPath.match(/^\/api\/activity\/([^/]+)$/);
+      if (urlPath === '/api/trading-log') {
+        const result = await this.handleTradingLog();
+        status = result.status;
+        this.respondJson(res, status, result.body);
+        return;
+      }
       const nftMintMatch = urlPath.match(/^\/nft\/([^/]+)$/);
       const nftNameMatch = urlPath.match(/^\/nft\/name\/(.+)$/);
       const nftImageMatch = urlPath.match(/^\/nft-image\/([^/]+)$/);
@@ -833,6 +839,17 @@ export class PublicBalanceServer {
         expiresAt: new Date(expiresAt).toISOString(),
       },
     };
+  }
+
+  private async handleTradingLog(): Promise<{ status: number; body: unknown }> {
+    const db = this.params.db;
+    const adapter = this.params.adapter;
+    if (!db || !adapter) {
+      return { status: 503, body: { error: 'Database not available' } };
+    }
+    const state = await db.loadState(adapter);
+    const log = (state.tradingDecisionLog ?? []).slice().reverse();
+    return { status: 200, body: { decisions: log } };
   }
 
   private async handleActivity(walletAddr: string): Promise<{ status: number; body: unknown }> {

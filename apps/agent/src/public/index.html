@@ -704,6 +704,7 @@ body {
   <button class="tab-btn active" data-tab="fund">FUND</button>
   <button class="tab-btn" data-tab="collection">COLLECTION</button>
   <button class="tab-btn" data-tab="agent">AGENT</button>
+  <button class="tab-btn" data-tab="trading">TRADING</button>
   <button class="tab-btn" data-tab="mynfts" id="tab-btn-mynfts">MY NFTS</button>
   <button class="tab-btn" data-tab="about">ABOUT</button>
 </nav>
@@ -758,6 +759,13 @@ body {
         <div class="col-header">INFRASTRUCTURE</div>
         <div id="infra-status"><div class="skeleton skeleton-row"></div></div>
       </div>
+    </div>
+  </div>
+
+  <!-- TRADING TAB -->
+  <div class="tab-content" id="tab-trading">
+    <div id="trading-log-content">
+      <div class="empty-state">LOADING TRADING LOG...</div>
     </div>
   </div>
 
@@ -903,6 +911,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     $('tab-' + tab).classList.add('active');
     if (tab === 'mynfts' && connectedWallet) {
       await loadPortfolio();
+    }
+    if (tab === 'trading') {
+      await loadTradingLog();
     }
   });
 });
@@ -1765,6 +1776,71 @@ async function handleAddFunds(tokenId) {
     btn.disabled = false;
     btn.textContent = 'SEND';
   }
+}
+
+// Trading log
+let tradingLogInterval = null;
+
+async function loadTradingLog() {
+  const container = $('trading-log-content');
+  try {
+    const res = await fetch('/api/trading-log');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    renderTradingLog(data.decisions || []);
+  } catch {
+    container.innerHTML = '<div class="empty-state">FAILED TO LOAD TRADING LOG</div>';
+  }
+
+  if (!tradingLogInterval) {
+    tradingLogInterval = setInterval(loadTradingLog, 10 * 60 * 1000);
+  }
+}
+
+function renderTradingLog(decisions) {
+  const container = $('trading-log-content');
+  if (decisions.length === 0) {
+    container.innerHTML = '<div class="empty-state">NO TRADING DECISIONS YET — THE AGENT EVALUATES EVERY 15 MINUTES</div>';
+    return;
+  }
+
+  let html = '<div class="action-title">AGENT TRADING DECISIONS</div>';
+
+  html += '<div style="overflow-x:auto">';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:13px;font-family:\'Space Mono\',monospace">';
+  html += '<thead><tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">';
+  html += '<th style="padding:8px 6px">TIME</th>';
+  html += '<th style="padding:8px 6px">BUCKET</th>';
+  html += '<th style="padding:8px 6px">ACTION</th>';
+  html += '<th style="padding:8px 6px">TOKEN</th>';
+  html += '<th style="padding:8px 6px">AMOUNT</th>';
+  html += '<th style="padding:8px 6px">RSI</th>';
+  html += '<th style="padding:8px 6px">TREND</th>';
+  html += '<th style="padding:8px 6px">DECISION</th>';
+  html += '<th style="padding:8px 6px">REASONING</th>';
+  html += '</tr></thead><tbody>';
+
+  for (const d of decisions) {
+    const time = new Date(d.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const decColor = d.decision === 'approve' ? 'var(--gain)' : d.decision === 'reject' ? 'var(--loss)' : 'var(--orange)';
+    const decLabel = d.decision.toUpperCase() + (d.executed ? (d.paperTrade ? ' [PAPER]' : ' [LIVE]') : '');
+    const bucketColor = d.bucket === 'core' ? '#4A9EFF' : d.bucket === 'top10' ? '#9B59B6' : '#E67E22';
+
+    html += `<tr style="border-bottom:1px solid var(--border)">`;
+    html += `<td style="padding:6px;white-space:nowrap;color:var(--muted)">${time}</td>`;
+    html += `<td style="padding:6px"><span style="color:${bucketColor};text-transform:uppercase;font-size:11px">${d.bucket}</span></td>`;
+    html += `<td style="padding:6px;color:${d.side === 'buy' ? 'var(--gain)' : 'var(--loss)'}">${d.side.toUpperCase()}</td>`;
+    html += `<td style="padding:6px">${d.tokenSymbol}</td>`;
+    html += `<td style="padding:6px">${formatUSD(d.proposedAmountUsdc)}</td>`;
+    html += `<td style="padding:6px">${d.rsi.toFixed(0)}</td>`;
+    html += `<td style="padding:6px">${d.trend}</td>`;
+    html += `<td style="padding:6px;color:${decColor};font-weight:bold">${decLabel}</td>`;
+    html += `<td style="padding:6px;color:var(--muted);font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.reasoning}">${d.reasoning}</td>`;
+    html += `</tr>`;
+  }
+
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
 }
 
 // Initial state
