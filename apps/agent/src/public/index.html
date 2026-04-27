@@ -752,6 +752,11 @@ body {
   <!-- ABOUT TAB -->
   <div class="tab-content" id="tab-about">
     <div class="about-content">
+      <h2>TEE ATTESTATION</h2>
+      <div id="attestation-panel" style="margin-bottom:32px">
+        <div class="empty-state" style="font-size:13px">LOADING ATTESTATION...</div>
+      </div>
+
       <h2>WHAT IS PANTHERS FUND</h2>
       <p>Panthers Fund is an autonomous AI trading fund operating on the Solana blockchain. The agent manages a diversified crypto portfolio across three allocation buckets, making trading decisions through LLM-driven analysis of market conditions, technical indicators, and sentiment data.</p>
       <p>Each NFT share represents proportional ownership of the fund's total value. Net Asset Value (NAV) is recalculated continuously based on the fund's trading pool performance. The agent operates 24/7 without human intervention.</p>
@@ -913,6 +918,7 @@ async function fetchAll() {
     renderAgentSections();
     renderNfts();
     loadTradingLog();
+    loadAttestation();
     $('last-updated').textContent = timeAgo(stats.lastUpdatedAt);
   } catch (e) {
     console.error('Fetch failed:', e);
@@ -1758,6 +1764,101 @@ async function loadSecretVmStatus() {
     }
   } catch {
     el.textContent = '—';
+  }
+}
+
+// Attestation
+async function loadAttestation() {
+  const panel = document.getElementById('attestation-panel');
+  if (!panel) return;
+  try {
+    const res = await fetch('/api/attestation');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const a = data.attestation;
+
+    if (!a) {
+      panel.innerHTML = `
+        <div class="stat-card" style="padding:16px;border-color:var(--muted)">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--muted);letter-spacing:1px">NOT CONFIGURED</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:8px">SECRETVM_DOMAIN not set. Attestation verification is not available.</div>
+        </div>
+      `;
+      return;
+    }
+
+    const validColor = a.valid ? 'var(--gain)' : 'var(--loss)';
+    const validLabel = a.valid ? 'VERIFIED' : 'FAILED';
+    const verifiedAt = new Date(a.verifiedAt).toLocaleString();
+
+    let checksHtml = '';
+    if (a.checks) {
+      for (const [key, val] of Object.entries(a.checks)) {
+        const label = key.replace(/_/g, ' ').toUpperCase();
+        const color = val ? 'var(--gain)' : 'var(--loss)';
+        const icon = val ? '&#10003;' : '&#10007;';
+        checksHtml += `
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+            <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${label}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:11px;color:${color}">${icon}</span>
+          </div>
+        `;
+      }
+    }
+
+    let errorsHtml = '';
+    if (a.errors && a.errors.length > 0) {
+      errorsHtml = `
+        <div style="margin-top:12px">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--loss);letter-spacing:1px;margin-bottom:4px">ERRORS</div>
+          ${a.errors.map(e => `<div style="font-size:11px;color:var(--loss);font-family:'Space Mono',monospace">${e}</div>`).join('')}
+        </div>
+      `;
+    }
+
+    panel.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="stat-card" style="padding:16px;border-color:${validColor}">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span style="width:10px;height:10px;border-radius:50%;background:${validColor};display:inline-block"></span>
+            <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:${validColor};letter-spacing:2px">${validLabel}</span>
+          </div>
+          <div style="display:grid;gap:6px">
+            <div style="display:flex;justify-content:space-between">
+              <span style="font-size:11px;color:var(--muted)">TYPE</span>
+              <span style="font-family:'Space Mono',monospace;font-size:11px">${a.attestationType || '—'}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <span style="font-size:11px;color:var(--muted)">CPU</span>
+              <span style="font-family:'Space Mono',monospace;font-size:11px">${a.cpuType || '—'}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <span style="font-size:11px;color:var(--muted)">WORKLOAD</span>
+              <span style="font-family:'Space Mono',monospace;font-size:11px;color:${a.workloadStatus === 'authentic_match' ? 'var(--gain)' : 'var(--orange)'}">${a.workloadStatus || '—'}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <span style="font-size:11px;color:var(--muted)">VERIFIED AT</span>
+              <span style="font-family:'Space Mono',monospace;font-size:11px">${verifiedAt}</span>
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px">RTMR3</div>
+            <div style="font-family:'Space Mono',monospace;font-size:10px;word-break:break-all;color:var(--text)">${a.rtmr3 || '—'}</div>
+          </div>
+          <div style="margin-top:8px">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px">TLS FINGERPRINT</div>
+            <div style="font-family:'Space Mono',monospace;font-size:10px;word-break:break-all;color:var(--text)">${a.tlsFingerprint || '—'}</div>
+          </div>
+          ${errorsHtml}
+        </div>
+        <div class="stat-card" style="padding:16px">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--muted);letter-spacing:1px;margin-bottom:8px">VERIFICATION CHECKS</div>
+          ${checksHtml}
+        </div>
+      </div>
+    `;
+  } catch {
+    panel.innerHTML = '<div class="empty-state">FAILED TO LOAD ATTESTATION</div>';
   }
 }
 

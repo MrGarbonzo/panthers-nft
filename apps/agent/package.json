@@ -24,6 +24,7 @@
     "@x402/svm": "^2.10.0",
     "bs58": "^6.0.0",
     "openai": "^6.34.0",
+    "secretvm-verify": "^0.8.4",
     "technicalindicators": "^3.1.0",
     "tweetnacl": "^1.0.3",
     "twitter-api-v2": "^1.29.0",

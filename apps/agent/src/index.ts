@@ -191,6 +191,33 @@ async function main(): Promise<void> {
     console.error('[secretvm] initialization failed (non-fatal):', err);
   }
 
+  // TEE Attestation — verify this VM at boot
+  try {
+    const vmDomain = db.config.get(CONFIG.SECRETVM_DOMAIN, { envKey: 'SECRETVM_DOMAIN' });
+    if (vmDomain) {
+      const { checkSecretVm } = await import('secretvm-verify');
+      console.log(`[attestation] Verifying ${vmDomain}...`);
+      const result = await checkSecretVm(vmDomain);
+      const summary = {
+        valid: result.valid,
+        attestationType: result.attestationType,
+        checks: result.checks,
+        rtmr3: result.report?.cpu?.rt_mr3 ?? null,
+        tlsFingerprint: result.report?.tls_fingerprint ?? null,
+        workloadStatus: result.report?.workload?.status ?? null,
+        cpuType: result.report?.cpu_type ?? null,
+        errors: result.errors ?? [],
+        verifiedAt: Date.now(),
+      };
+      db.config.set(CONFIG.ATTESTATION_RESULT, JSON.stringify(summary));
+      console.log(`[attestation] Valid: ${result.valid} | Type: ${result.attestationType} | Workload: ${summary.workloadStatus}`);
+    } else {
+      console.log('[attestation] SECRETVM_DOMAIN not set — skipping verification');
+    }
+  } catch (err) {
+    console.error('[attestation] Verification failed (non-fatal):', err);
+  }
+
   if (devMode) {
     console.log('DEV_MODE=true — storage-only boot');
     console.log('Panthers agent initialized (storage-only mode)');

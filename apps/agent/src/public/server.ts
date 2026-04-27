@@ -137,6 +137,12 @@ export class PublicBalanceServer {
 
       const portfolioMatch = urlPath.match(/^\/api\/portfolio\/([^/]+)$/);
       const activityMatch = urlPath.match(/^\/api\/activity\/([^/]+)$/);
+      if (urlPath === '/api/attestation') {
+        const result = this.handleAttestation();
+        status = result.status;
+        this.respondJson(res, status, result.body);
+        return;
+      }
       if (urlPath === '/api/secretvm-status') {
         const result = this.handleSecretVmStatus();
         status = result.status;
@@ -849,6 +855,18 @@ export class PublicBalanceServer {
         expiresAt: new Date(expiresAt).toISOString(),
       },
     };
+  }
+
+  private handleAttestation(): { status: number; body: unknown } {
+    const db = this.params.db;
+    if (!db) return { status: 503, body: { error: 'Database not available' } };
+    const raw = db.config.get(CONFIG.ATTESTATION_RESULT);
+    if (!raw) return { status: 200, body: { attestation: null } };
+    try {
+      return { status: 200, body: { attestation: JSON.parse(raw) } };
+    } catch {
+      return { status: 200, body: { attestation: null } };
+    }
   }
 
   private handleSecretVmStatus(): { status: number; body: unknown } {
