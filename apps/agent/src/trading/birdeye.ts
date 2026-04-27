@@ -52,7 +52,9 @@ export class BirdeyeClient {
     const rpcUrl = this.params.paymentRpcUrl ?? 'https://api.mainnet-beta.solana.com';
     const signer = await createKeyPairSignerFromBytes(this.params.keypair.secretKey);
     const svmScheme = new ExactSvmScheme(signer, { rpcUrl });
-    const client = new x402Client().register('solana:mainnet', svmScheme);
+    const client = new x402Client()
+      .register('solana:mainnet', svmScheme)
+      .register('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', svmScheme);
     this.x402Fetch = wrapFetchWithPayment(globalThis.fetch, client);
     this.initialized = true;
   }
