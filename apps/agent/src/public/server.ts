@@ -134,6 +134,12 @@ export class PublicBalanceServer {
 
       const portfolioMatch = urlPath.match(/^\/api\/portfolio\/([^/]+)$/);
       const activityMatch = urlPath.match(/^\/api\/activity\/([^/]+)$/);
+      if (urlPath === '/api/secretvm-status') {
+        const result = this.handleSecretVmStatus();
+        status = result.status;
+        this.respondJson(res, status, result.body);
+        return;
+      }
       if (urlPath === '/api/trading-log') {
         const result = await this.handleTradingLog();
         status = result.status;
@@ -837,6 +843,22 @@ export class PublicBalanceServer {
         usdcMint,
         amountUsdc,
         expiresAt: new Date(expiresAt).toISOString(),
+      },
+    };
+  }
+
+  private handleSecretVmStatus(): { status: number; body: unknown } {
+    const db = this.params.db;
+    if (!db) return { status: 503, body: { error: 'Database not available' } };
+    const balance = db.config.get(CONFIG.SECRETVM_BALANCE);
+    const vmId = db.config.get(CONFIG.SECRETVM_VM_ID);
+    const balanceMinor = balance ? Number(balance) : null;
+    return {
+      status: 200,
+      body: {
+        balance: balanceMinor,
+        balanceUsdc: balanceMinor !== null ? balanceMinor / 1_000_000 : null,
+        vmId: vmId ?? null,
       },
     };
   }

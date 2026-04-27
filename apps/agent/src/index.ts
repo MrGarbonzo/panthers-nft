@@ -169,6 +169,43 @@ async function main(): Promise<void> {
     console.error('[registry] ERC-8004 registration failed (non-fatal):', err);
   }
 
+  // SecretVM x402 client
+  let secretVmClient: import('@idiostasis/x402-client').SecretVmClient | null = null;
+  try {
+    const evmMnemonic = process.env.EVM_MNEMONIC;
+    if (evmMnemonic) {
+      const { mnemonicToAccount } = await import('viem/accounts');
+      const { X402Client, SecretVmClient } = await import('@idiostasis/x402-client');
+      const account = mnemonicToAccount(evmMnemonic);
+      const evmWallet = {
+        address: account.address,
+        signMessage: async (msg: string | Uint8Array) =>
+          account.signMessage({ message: typeof msg === 'string' ? msg : { raw: msg } }),
+        signTypedData: async (params: any) => account.signTypedData(params),
+      };
+      const x402 = new X402Client(evmWallet);
+      const secretVmBaseUrl = db.config.get(CONFIG.SECRETVM_BASE_URL, {
+        envKey: 'SECRETVM_BASE_URL',
+        defaultValue: 'https://secretai.scrtlabs.com',
+      })!;
+      secretVmClient = new SecretVmClient(evmWallet, x402, secretVmBaseUrl);
+
+      const balance = await secretVmClient.getBalance();
+      db.config.set(CONFIG.SECRETVM_BALANCE, String(balance));
+      console.log(`[secretvm] Balance: ${balance} (${(balance / 1_000_000).toFixed(2)} USDC)`);
+
+      const vmId = db.config.get(CONFIG.SECRETVM_VM_ID, { envKey: 'SECRETVM_VM_ID' });
+      if (vmId) {
+        const status = await secretVmClient.getVmStatus(vmId);
+        console.log(`[secretvm] VM ${vmId}: ${status.status}`);
+      }
+    } else {
+      console.log('[secretvm] EVM_MNEMONIC not set — skipping SecretVM client');
+    }
+  } catch (err) {
+    console.error('[secretvm] initialization failed (non-fatal):', err);
+  }
+
   if (devMode) {
     console.log('DEV_MODE=true — storage-only boot');
     console.log('Panthers agent initialized (storage-only mode)');
@@ -585,6 +622,32 @@ async function main(): Promise<void> {
       console.error('expireStalePendingSales failed:', err);
     }
   }, STALE_SALE_INTERVAL_MS);
+
+  // SecretVM periodic balance check + auto top-up
+  if (secretVmClient) {
+    const svm = secretVmClient;
+    setInterval(async () => {
+      try {
+        const balance = await svm.getBalance();
+        db.config.set(CONFIG.SECRETVM_BALANCE, String(balance));
+        const usdcBalance = balance / 1_000_000;
+        console.log(`[secretvm] Balance: ${usdcBalance.toFixed(2)} USDC`);
+        if (balance < 100_000) { // < 0.10 USDC
+          console.log('[secretvm] Balance low, attempting auto top-up of 1 USDC...');
+          try {
+            await svm.addFunds(1);
+            const newBalance = await svm.getBalance();
+            db.config.set(CONFIG.SECRETVM_BALANCE, String(newBalance));
+            console.log(`[secretvm] Top-up complete. New balance: ${(newBalance / 1_000_000).toFixed(2)} USDC`);
+          } catch (topupErr) {
+            console.error('[secretvm] Auto top-up failed:', topupErr);
+          }
+        }
+      } catch (err) {
+        console.error('[secretvm] Balance check failed:', err);
+      }
+    }, 30 * 60 * 1000);
+  }
 
   console.log('Panthers agent initialized');
 }

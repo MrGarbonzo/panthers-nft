@@ -1173,8 +1173,13 @@ function renderAgent() {
         <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">GUARDIAN NODES</span>
         <span style="font-family:'Space Mono',monospace;font-size:12px;color:var(--muted)">${health.storageBackend === 'idiostasis' ? 'ACTIVE' : 'N/A'}</span>
       </div>
+      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">SECRETVM BALANCE</span>
+        <span id="secretvm-balance" style="font-family:'Space Mono',monospace;font-size:12px;color:var(--muted)">...</span>
+      </div>
     </div>
   `;
+  loadSecretVmStatus();
 }
 
 // ── My NFTs ──
@@ -1775,6 +1780,26 @@ async function handleAddFunds(tokenId) {
     resultEl.innerHTML = '<div class="inline-msg error">' + msg + '</div>';
     btn.disabled = false;
     btn.textContent = 'SEND';
+  }
+}
+
+// SecretVM status
+async function loadSecretVmStatus() {
+  const el = document.getElementById('secretvm-balance');
+  if (!el) return;
+  try {
+    const res = await fetch('/api/secretvm-status');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (data.balanceUsdc !== null) {
+      const color = data.balanceUsdc < 0.10 ? 'var(--loss)' : data.balanceUsdc < 1 ? 'var(--orange)' : 'var(--gain)';
+      el.style.color = color;
+      el.textContent = `${data.balanceUsdc.toFixed(2)} USDC`;
+    } else {
+      el.textContent = 'NOT CONFIGURED';
+    }
+  } catch {
+    el.textContent = 'UNAVAILABLE';
   }
 }
 

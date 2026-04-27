@@ -26,6 +26,9 @@ export const CONFIG = {
   ERC8004_TOKEN_ID: 'erc8004_token_id',
 
   PAPER_TRADING: 'paper_trading',
+  SECRETVM_BASE_URL: 'secretvm_base_url',
+  SECRETVM_VM_ID: 'secretvm_vm_id',
+  SECRETVM_BALANCE: 'secretvm_balance',
   REDEEM_FEE_PCT: 'redeem_fee_pct',
 
   MOLTBOOK_API_KEY: 'moltbook_api_key',
