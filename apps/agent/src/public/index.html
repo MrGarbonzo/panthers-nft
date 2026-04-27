@@ -1069,14 +1069,12 @@ function renderAgentSections() {
 
   const pf = stats?.personalFund || health.personalFund || {};
   const fees = pf.totalFeesCollectedUsdc || 0;
-  const donations = pf.totalDonationsUsdc || 0;
   const spendSol = pf.totalInfraSpendSolanaUsdc || 0;
   const spendBase = pf.totalInfraSpendBaseUsdc || 0;
-  const revenue = fees + donations;
   const costs = spendSol + spendBase;
+  const net = fees - costs;
   const dailyBurn = 2.0;
-  const net = revenue - costs;
-  const runwayDays = dailyBurn > 0 ? Math.max(0, Math.floor(net / dailyBurn)) : 999;
+  const runwayDays = dailyBurn > 0 ? Math.max(0, Math.floor(Math.max(0, net) / dailyBurn)) : 999;
 
   const storage = health.storageBackend === 'idiostasis' ? 'IDIOSTASIS' : 'SIMPLE';
   const storageColor = health.storageBackend === 'idiostasis' ? 'var(--gain)' : 'var(--muted)';
@@ -1084,11 +1082,9 @@ function renderAgentSections() {
   const perfColor = stats ? (stats.performancePct >= 0 ? 'var(--gain)' : 'var(--loss)') : 'var(--muted)';
   const tvl = stats ? formatUSD(stats.totalPoolValueUsdc) : '—';
   const perf = stats ? formatPct(stats.performancePct) : '—';
-  const holdings = stats ? `${stats.totalNftCount} NFTs` : '—';
-  const avgNav = stats ? formatUSD(stats.avgNavUsdc) : '—';
 
   $('agent-ops').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:12px">
       <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">TVL</div>
         <div class="stat-value" style="font-size:22px">${tvl}</div>
@@ -1099,27 +1095,17 @@ function renderAgentSections() {
         <div class="stat-value" style="font-size:22px;color:${perfColor}">${perf}</div>
         <div class="stat-sub">Since Inception</div>
       </div>
-      <div class="stat-card" style="padding:14px 16px;text-align:center">
-        <div class="stat-label">HOLDINGS</div>
-        <div class="stat-value" style="font-size:22px">${holdings}</div>
-        <div class="stat-sub">Outstanding Shares</div>
-      </div>
-      <div class="stat-card" style="padding:14px 16px;text-align:center">
-        <div class="stat-label">AVG NAV</div>
-        <div class="stat-value" style="font-size:22px;color:var(--orange)">${avgNav}</div>
-        <div class="stat-sub">Per Share</div>
-      </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
       <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">REVENUE</div>
-        <div class="stat-value" style="font-size:22px;color:var(--gain)">${formatUSD(revenue)}</div>
-        <div class="stat-sub">fees + donations</div>
+        <div class="stat-value" style="font-size:22px;color:var(--gain)">${formatUSD(fees)}</div>
+        <div class="stat-sub">redeem fees</div>
       </div>
       <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">COSTS</div>
         <div class="stat-value" style="font-size:22px;color:var(--loss)">${formatUSD(costs)}</div>
-        <div class="stat-sub">infra spend</div>
+        <div class="stat-sub">total infra spend</div>
       </div>
       <div class="stat-card" style="padding:14px 16px;text-align:center;border-color:${net >= 0 ? 'var(--gain)' : 'var(--loss)'}">
         <div class="stat-label">NET / RUNWAY</div>
