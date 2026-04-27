@@ -69,7 +69,8 @@ export class BirdeyeClient {
     });
 
     if (!res.ok) {
-      throw new Error(`Birdeye ${path} failed: ${res.status} ${res.statusText}`);
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`Birdeye ${path} failed: ${res.status} ${errBody}`);
     }
     const body = (await res.json()) as BirdeyeEnvelope<T>;
     if (body.success === false || body.data === undefined) {
