@@ -54,7 +54,7 @@ export async function completeSale(params: {
     mintPrice: pendingSale.agreedPriceUsdc,
     mintedAt: Date.now(),
     mintAddress,
-    custodyMode: 'agent',
+    custodyMode: 'self',
     nftIndex,
   };
 

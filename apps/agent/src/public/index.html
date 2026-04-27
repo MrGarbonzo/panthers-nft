@@ -1575,7 +1575,7 @@ async function executeRedeem(tokenId, mintAddr, agentWallet) {
     const sig = await connection.sendRawTransaction(signed.serialize());
     await connection.confirmTransaction(sig, 'confirmed');
 
-    statusEl.innerHTML = '<div class="inline-msg success">NFT sent. USDC will arrive in your wallet shortly.</div>';
+    statusEl.innerHTML = `<div class="inline-msg success">NFT sent. USDC will arrive in your wallet shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
     btn.style.display = 'none';
 
     // Refresh portfolio after a short delay
@@ -1688,7 +1688,7 @@ async function handleAddFunds(tokenId) {
     await connection.confirmTransaction(sig, 'confirmed');
 
     const el = document.getElementById('nft-action-' + tokenId);
-    el.innerHTML = '<div class="inline-msg success">Funds sent. Your NFT position will update shortly.</div>';
+    el.innerHTML = `<div class="inline-msg success">Funds sent. Your NFT position will update shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
 
     setTimeout(() => loadPortfolio(), 5000);
   } catch (e) {
