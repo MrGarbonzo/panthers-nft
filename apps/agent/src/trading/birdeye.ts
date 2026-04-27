@@ -1,7 +1,8 @@
 import { Keypair } from '@solana/web3.js';
 import { createKeyPairSignerFromBytes } from '@solana/kit';
-import { wrapFetchWithPayment, x402Client } from '@x402/fetch';
+import { wrapFetchWithPayment, x402Client, type PaymentPayload } from '@x402/fetch';
 import { ExactSvmScheme } from '@x402/svm';
+import { v4 as uuidv4 } from 'uuid';
 
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -52,9 +53,21 @@ export class BirdeyeClient {
     const rpcUrl = this.params.paymentRpcUrl ?? 'https://api.mainnet-beta.solana.com';
     const signer = await createKeyPairSignerFromBytes(this.params.keypair.secretKey);
     const svmScheme = new ExactSvmScheme(signer, { rpcUrl });
+    const paymentIdExtension = {
+      key: 'payment-identifier',
+      enrichPaymentPayload: async (payload: PaymentPayload) => {
+        const id = `pay_${uuidv4().replace(/-/g, '').slice(0, 20)}`;
+        payload.extensions = {
+          ...payload.extensions,
+          'payment-identifier': { info: { id } },
+        };
+        return payload;
+      },
+    };
     const client = new x402Client()
       .register('solana:mainnet', svmScheme)
-      .register('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', svmScheme);
+      .register('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', svmScheme)
+      .registerExtension(paymentIdExtension);
     this.x402Fetch = wrapFetchWithPayment(globalThis.fetch, client);
     this.initialized = true;
   }
