@@ -704,7 +704,6 @@ body {
   <button class="tab-btn active" data-tab="fund">FUND</button>
   <button class="tab-btn" data-tab="collection">COLLECTION</button>
   <button class="tab-btn" data-tab="agent">AGENT</button>
-  <button class="tab-btn" data-tab="trading">TRADING</button>
   <button class="tab-btn" data-tab="mynfts" id="tab-btn-mynfts">MY NFTS</button>
   <button class="tab-btn" data-tab="about">ABOUT</button>
 </nav>
@@ -760,12 +759,11 @@ body {
         <div id="infra-status"><div class="skeleton skeleton-row"></div></div>
       </div>
     </div>
-  </div>
-
-  <!-- TRADING TAB -->
-  <div class="tab-content" id="tab-trading">
-    <div id="trading-log-content">
-      <div class="empty-state">LOADING TRADING LOG...</div>
+    <div style="margin-top:24px">
+      <div class="col-header">AGENT TRADING DECISIONS</div>
+      <div id="trading-log-content">
+        <div class="empty-state" style="font-size:13px">LOADING...</div>
+      </div>
     </div>
   </div>
 
@@ -912,9 +910,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'mynfts' && connectedWallet) {
       await loadPortfolio();
     }
-    if (tab === 'trading') {
-      await loadTradingLog();
-    }
   });
 });
 
@@ -940,6 +935,7 @@ async function fetchAll() {
     renderFund();
     renderNfts();
     renderAgent();
+    loadTradingLog();
     $('last-updated').textContent = timeAgo(stats.lastUpdatedAt);
   } catch (e) {
     console.error('Fetch failed:', e);
@@ -1811,10 +1807,9 @@ async function loadSecretVmStatus() {
 }
 
 // Trading log
-let tradingLogInterval = null;
-
 async function loadTradingLog() {
-  const container = $('trading-log-content');
+  const container = document.getElementById('trading-log-content');
+  if (!container) return;
   try {
     const res = await fetch('/api/trading-log');
     if (!res.ok) throw new Error();
@@ -1822,10 +1817,6 @@ async function loadTradingLog() {
     renderTradingLog(data.decisions || []);
   } catch {
     container.innerHTML = '<div class="empty-state">FAILED TO LOAD TRADING LOG</div>';
-  }
-
-  if (!tradingLogInterval) {
-    tradingLogInterval = setInterval(loadTradingLog, 10 * 60 * 1000);
   }
 }
 
