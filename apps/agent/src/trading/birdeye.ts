@@ -170,8 +170,7 @@ export class BirdeyeClient {
       headers: {
         'x-chain': 'solana',
         accept: 'application/json',
-        'Payment-Response': encodedPayment,
-        'X-PAYMENT': encodedPayment,
+        'payment-signature': encodedPayment,
       },
     });
 
