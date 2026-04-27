@@ -333,10 +333,6 @@ export class PublicBalanceServer {
       };
     }
 
-    const tvl = cache.fundSummary.totalPoolValueUsdc;
-    const totalMinted = cache.fundSummary.totalNftCount;
-    const navPerNft = totalMinted > 0 ? tvl / totalMinted : 0;
-
     const ownershipChecks = allNfts.map(async (nft) => {
       try {
         const mintPubkey = new PublicKey(nft.mintAddress);
@@ -358,15 +354,17 @@ export class PublicBalanceServer {
       mint: nft.mintAddress,
       name: nft.name,
       acquiredAt: new Date(nft.mintedAt).toISOString(),
-      navUsdc: navPerNft,
+      navUsdc: nft.navUsdc,
     }));
+
+    const totalNavUsdc = nfts.reduce((sum, n) => sum + n.navUsdc, 0);
 
     return {
       status: 200,
       body: {
         walletAddress: walletAddr,
         nfts,
-        totalNavUsdc: nfts.length * navPerNft,
+        totalNavUsdc,
         nftCount: nfts.length,
       },
     };
