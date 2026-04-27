@@ -1625,12 +1625,29 @@ async function executeRedeem(tokenId, mintAddr, agentWallet) {
     // Transfer 1 NFT token
     tx.add(createSplTransferInstruction(sourceATA, destATA, ownerPubkey, 1));
 
-    tx.feePayer = ownerPubkey;
-    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    // Verify user still holds this NFT
+    try {
+      const bal = await connection.getTokenAccountBalance(sourceATA);
+      if (Number(bal.value.amount) < 1) {
+        statusEl.innerHTML = '<div class="inline-msg error">You no longer hold this NFT. It may have already been redeemed.</div>';
+        btn.disabled = false;
+        btn.textContent = 'CONFIRM REDEEM';
+        return;
+      }
+    } catch {
+      statusEl.innerHTML = '<div class="inline-msg error">Could not verify NFT ownership. The token account may not exist.</div>';
+      btn.disabled = false;
+      btn.textContent = 'CONFIRM REDEEM';
+      return;
+    }
 
-    const signed = await provider.signTransaction(tx);
-    const sig = await connection.sendRawTransaction(signed.serialize());
-    await connection.confirmTransaction(sig, 'confirmed');
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    tx.feePayer = ownerPubkey;
+    tx.recentBlockhash = blockhash;
+
+    const { signature: sig } = await provider.signAndSendTransaction(tx);
+    btn.textContent = 'CONFIRMING...';
+    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
 
     statusEl.innerHTML = `<div class="inline-msg success">NFT sent. USDC will arrive in your wallet shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
     btn.style.display = 'none';
@@ -1733,13 +1750,13 @@ async function handleAddFunds(tokenId) {
     // Memo with saleId so agent matches this to the right NFT
     tx.add(createMemoInstruction(data.saleId, ownerPubkey));
 
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     tx.feePayer = ownerPubkey;
-    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    tx.recentBlockhash = blockhash;
 
-    const signed = await provider.signTransaction(tx);
+    const { signature: sig } = await provider.signAndSendTransaction(tx);
     btn.textContent = 'CONFIRMING...';
-    const sig = await connection.sendRawTransaction(signed.serialize());
-    await connection.confirmTransaction(sig, 'confirmed');
+    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
 
     const el = document.getElementById('nft-action-' + tokenId);
     el.innerHTML = `<div class="inline-msg success">Funds sent. Your NFT position will update shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
