@@ -61,9 +61,11 @@ export class BirdeyeClient {
 
   private async request<T>(path: string): Promise<T> {
     await this.ensureInitialized();
-    const url = `${BASE_URL}/x402${path}`;
+    const chain = 'solana';
+    const separator = path.includes('?') ? '&' : '?';
+    const url = `${BASE_URL}/x402${path}${separator}chain=${chain}`;
     const res = await this.x402Fetch(url, {
-      headers: { 'x-chain': 'solana', accept: 'application/json' },
+      headers: { 'x-chain': chain, accept: 'application/json' },
     });
 
     if (!res.ok) {
