@@ -795,6 +795,11 @@ export class PublicBalanceServer {
     };
     await db.saveState(nextState, adapter, this.params.cacheWriter);
 
+    const usdcMint = db.config.get(CONFIG.USDC_MINT, {
+      envKey: 'USDC_MINT',
+      defaultValue: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    })!;
+
     console.log(
       `[AddFunds] Created pending add-funds ${saleId} for ${walletAddress.slice(0, 8)}... tokenId=${tokenId} amount=${amountUsdc} USDC`,
     );
@@ -802,10 +807,11 @@ export class PublicBalanceServer {
     return {
       status: 200,
       body: {
+        saleId,
         agentWallet: this.solanaWalletAddress,
+        usdcMint,
         amountUsdc,
         expiresAt: new Date(expiresAt).toISOString(),
-        note: `Send exactly ${amountUsdc} USDC to add funds to your NFT position`,
       },
     };
   }

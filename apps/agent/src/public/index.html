@@ -1426,9 +1426,10 @@ async function handleOffer(overrideAmount) {
   btn.textContent = 'SUBMIT OFFER';
 }
 
-// SPL Token helpers using raw @solana/web3.js
+// SPL Token helpers using raw @solana/web3.js (no Buffer — browser-safe)
 const TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const ASSOCIATED_TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+const MEMO_PROGRAM_ID = new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 
 function deriveATA(owner, mint) {
   return solanaWeb3.PublicKey.findProgramAddressSync(
@@ -1448,14 +1449,15 @@ function createATAInstruction(payer, ata, owner, mint) {
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     programId: ASSOCIATED_TOKEN_PROGRAM_ID,
-    data: Buffer.alloc(0),
+    data: new Uint8Array(0),
   });
 }
 
 function createSplTransferInstruction(source, dest, owner, amount) {
-  const data = Buffer.alloc(9);
-  data.writeUInt8(3, 0); // Transfer instruction index
-  data.writeBigUInt64LE(BigInt(amount), 1);
+  const data = new Uint8Array(9);
+  const view = new DataView(data.buffer);
+  data[0] = 3; // Transfer instruction index
+  view.setBigUint64(1, BigInt(amount), true); // little-endian
   return new solanaWeb3.TransactionInstruction({
     keys: [
       { pubkey: source, isSigner: false, isWritable: true },
@@ -1464,6 +1466,14 @@ function createSplTransferInstruction(source, dest, owner, amount) {
     ],
     programId: TOKEN_PROGRAM_ID,
     data,
+  });
+}
+
+function createMemoInstruction(memo, signer) {
+  return new solanaWeb3.TransactionInstruction({
+    keys: [{ pubkey: signer, isSigner: true, isWritable: false }],
+    programId: MEMO_PROGRAM_ID,
+    data: new TextEncoder().encode(memo),
   });
 }
 
@@ -1586,7 +1596,7 @@ function showAddFunds(tokenId) {
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <input type="number" class="offer-input" id="add-funds-amount-${tokenId}" placeholder="USDC" min="0.01" step="0.01" style="width:100px">
-      <button class="action-btn small secondary" onclick="handleAddFunds('${tokenId}')">SEND</button>
+      <button class="action-btn small secondary" id="add-funds-btn-${tokenId}" onclick="handleAddFunds('${tokenId}')">SEND</button>
       <button class="action-btn small" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border)" onclick="document.getElementById('nft-action-${tokenId}').innerHTML=''">CANCEL</button>
     </div>
     <div id="add-funds-result-${tokenId}"></div>
@@ -1596,6 +1606,7 @@ function showAddFunds(tokenId) {
 async function handleAddFunds(tokenId) {
   if (!connectedWallet) return;
   const input = document.getElementById('add-funds-amount-' + tokenId);
+  const btn = document.getElementById('add-funds-btn-' + tokenId);
   const resultEl = document.getElementById('add-funds-result-' + tokenId);
   const amount = parseFloat(input.value);
 
@@ -1604,9 +1615,12 @@ async function handleAddFunds(tokenId) {
     return;
   }
 
-  resultEl.innerHTML = '<div style="color:var(--muted);font-size:13px">Processing...</div>';
+  btn.disabled = true;
+  btn.textContent = 'PROCESSING...';
+  resultEl.innerHTML = '';
 
   try {
+    // Step 1: Create pending add-funds record on server (returns saleId + usdcMint)
     const res = await fetch('/api/add-funds', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1614,21 +1628,75 @@ async function handleAddFunds(tokenId) {
     });
     const data = await res.json();
 
-    if (res.status === 200) {
-      const el = document.getElementById('nft-action-' + tokenId);
-      renderPaymentPanel('nft-action-' + tokenId, data);
-    } else if (res.status === 409) {
-      renderPaymentPanel('nft-action-' + tokenId, {
-        agentWallet: data.agentWallet,
-        amountUsdc: data.amountUsdc,
-        expiresAt: data.expiresAt,
-      });
-      resultEl.insertAdjacentHTML('beforeend', '<div class="inline-msg info">You already have a pending payment.</div>');
-    } else {
-      resultEl.innerHTML = '<div class="inline-msg error">' + (data.error || 'Something went wrong') + '</div>';
+    if (res.status === 409) {
+      resultEl.innerHTML = '<div class="inline-msg info">You already have a pending payment. Please wait for it to expire.</div>';
+      btn.disabled = false;
+      btn.textContent = 'SEND';
+      return;
     }
+    if (res.status !== 200) {
+      resultEl.innerHTML = '<div class="inline-msg error">' + (data.error || 'Something went wrong') + '</div>';
+      btn.disabled = false;
+      btn.textContent = 'SEND';
+      return;
+    }
+
+    // Step 2: Build USDC transfer TX with memo
+    const provider = window.solana;
+    if (!provider || !provider.isPhantom) {
+      resultEl.innerHTML = '<div class="inline-msg error">Phantom wallet not found.</div>';
+      btn.disabled = false;
+      btn.textContent = 'SEND';
+      return;
+    }
+
+    btn.textContent = 'APPROVE IN WALLET...';
+
+    const ownerPubkey = new solanaWeb3.PublicKey(connectedWallet);
+    const agentPubkey = new solanaWeb3.PublicKey(data.agentWallet);
+    const usdcMintPubkey = new solanaWeb3.PublicKey(data.usdcMint);
+    const atomicAmount = BigInt(Math.round(amount * 1_000_000));
+
+    const sourceATA = deriveATA(ownerPubkey, usdcMintPubkey);
+    const destATA = deriveATA(agentPubkey, usdcMintPubkey);
+
+    const connection = new solanaWeb3.Connection(
+      provider.connection?.rpcEndpoint || 'https://api.devnet.solana.com',
+      'confirmed'
+    );
+
+    const tx = new solanaWeb3.Transaction();
+
+    // Create agent USDC ATA if it doesn't exist
+    const destAccount = await connection.getAccountInfo(destATA);
+    if (!destAccount) {
+      tx.add(createATAInstruction(ownerPubkey, destATA, agentPubkey, usdcMintPubkey));
+    }
+
+    // USDC transfer
+    tx.add(createSplTransferInstruction(sourceATA, destATA, ownerPubkey, atomicAmount));
+
+    // Memo with saleId so agent matches this to the right NFT
+    tx.add(createMemoInstruction(data.saleId, ownerPubkey));
+
+    tx.feePayer = ownerPubkey;
+    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+    const signed = await provider.signTransaction(tx);
+    btn.textContent = 'CONFIRMING...';
+    const sig = await connection.sendRawTransaction(signed.serialize());
+    await connection.confirmTransaction(sig, 'confirmed');
+
+    const el = document.getElementById('nft-action-' + tokenId);
+    el.innerHTML = '<div class="inline-msg success">Funds sent. Your NFT position will update shortly.</div>';
+
+    setTimeout(() => loadPortfolio(), 5000);
   } catch (e) {
-    resultEl.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
+    console.error('Add funds TX failed:', e);
+    const msg = e.message || 'Transaction failed';
+    resultEl.innerHTML = '<div class="inline-msg error">' + msg + '</div>';
+    btn.disabled = false;
+    btn.textContent = 'SEND';
   }
 }
 
