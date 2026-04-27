@@ -474,9 +474,12 @@ async function main(): Promise<void> {
     } catch {}
   };
 
+  const birdeyePaymentRpc = process.env.BIRDEYE_PAYMENT_RPC_URL ?? 'https://api.mainnet-beta.solana.com';
+
   const birdeye = new BirdeyeClient({
     keypair,
     connection,
+    paymentRpcUrl: birdeyePaymentRpc,
     onSpend: (amount) => void onBirdeyeSpend(amount),
   });
   const jupiter = new JupiterClient(connection, keypair);

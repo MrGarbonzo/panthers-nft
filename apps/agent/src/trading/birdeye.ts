@@ -55,17 +55,22 @@ interface X402PaymentRequired {
 export interface BirdeyeClientParams {
   keypair: Keypair;
   connection: Connection;
+  paymentRpcUrl?: string;
   onSpend?: (amountUsdc: number) => void;
 }
 
 export class BirdeyeClient {
   private readonly keypair: Keypair;
   private readonly connection: Connection;
+  private readonly paymentConnection: Connection;
   private readonly onSpend: (amountUsdc: number) => void;
 
   constructor(params: BirdeyeClientParams) {
     this.keypair = params.keypair;
     this.connection = params.connection;
+    this.paymentConnection = params.paymentRpcUrl
+      ? new Connection(params.paymentRpcUrl, 'confirmed')
+      : params.connection;
     this.onSpend = params.onSpend ?? (() => {});
   }
 
@@ -119,7 +124,7 @@ export class BirdeyeClient {
       this.keypair.publicKey,
     );
     const destAta = await getOrCreateAssociatedTokenAccount(
-      this.connection,
+      this.paymentConnection,
       this.keypair,
       asset,
       payTo,
@@ -136,7 +141,7 @@ export class BirdeyeClient {
       ),
     );
 
-    const sig = await sendAndConfirmTransaction(this.connection, tx, [
+    const sig = await sendAndConfirmTransaction(this.paymentConnection, tx, [
       this.keypair,
     ]);
     const amountUsdc = Number(amount) / 1_000_000;
