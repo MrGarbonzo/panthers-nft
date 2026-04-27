@@ -703,7 +703,6 @@ body {
 <nav class="tab-nav">
   <button class="tab-btn active" data-tab="fund">FUND</button>
   <button class="tab-btn" data-tab="collection">COLLECTION</button>
-  <button class="tab-btn" data-tab="agent">AGENT</button>
   <button class="tab-btn" data-tab="mynfts" id="tab-btn-mynfts">MY NFTS</button>
   <button class="tab-btn" data-tab="about">ABOUT</button>
 </nav>
@@ -717,6 +716,7 @@ body {
       <div class="stat-card skeleton skeleton-stat"></div>
       <div class="stat-card skeleton skeleton-stat"></div>
     </div>
+    <div id="wallet-bar" style="margin-bottom:16px"></div>
     <div class="alloc-section" id="alloc-section">
       <div class="skeleton skeleton-bar"></div>
     </div>
@@ -730,6 +730,22 @@ body {
         <div id="trades"><div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>
       </div>
     </div>
+    <div style="margin-top:24px">
+      <div class="col-header">AGENT TRADING DECISIONS</div>
+      <div id="trading-log-content">
+        <div class="empty-state" style="font-size:13px">LOADING...</div>
+      </div>
+    </div>
+    <div class="columns" style="margin-top:24px" id="agent-columns">
+      <div>
+        <div class="col-header">AGENT PERSONAL FUND</div>
+        <div id="personal-fund"><div class="skeleton skeleton-row"></div></div>
+      </div>
+      <div>
+        <div class="col-header">INFRASTRUCTURE</div>
+        <div id="infra-status"><div class="skeleton skeleton-row"></div></div>
+      </div>
+    </div>
   </div>
 
   <!-- COLLECTION TAB -->
@@ -739,31 +755,6 @@ body {
       <div class="skeleton skeleton-card"></div>
       <div class="skeleton skeleton-card"></div>
       <div class="skeleton skeleton-card"></div>
-    </div>
-  </div>
-
-  <!-- AGENT TAB -->
-  <div class="tab-content" id="tab-agent">
-    <div class="stat-bar" id="agent-stat-bar">
-      <div class="stat-card skeleton skeleton-stat"></div>
-      <div class="stat-card skeleton skeleton-stat"></div>
-      <div class="stat-card skeleton skeleton-stat"></div>
-    </div>
-    <div class="columns" id="agent-columns">
-      <div>
-        <div class="col-header">PERSONAL FUND</div>
-        <div id="personal-fund"><div class="skeleton skeleton-row"></div></div>
-      </div>
-      <div>
-        <div class="col-header">INFRASTRUCTURE</div>
-        <div id="infra-status"><div class="skeleton skeleton-row"></div></div>
-      </div>
-    </div>
-    <div style="margin-top:24px">
-      <div class="col-header">AGENT TRADING DECISIONS</div>
-      <div id="trading-log-content">
-        <div class="empty-state" style="font-size:13px">LOADING...</div>
-      </div>
     </div>
   </div>
 
@@ -933,8 +924,8 @@ async function fetchAll() {
     hasError = false;
     $('error-banner').classList.remove('visible');
     renderFund();
+    renderAgentSections();
     renderNfts();
-    renderAgent();
     loadTradingLog();
     $('last-updated').textContent = timeAgo(stats.lastUpdatedAt);
   } catch (e) {
@@ -1091,35 +1082,28 @@ function formatUptime(seconds) {
   return m + 'm';
 }
 
-function renderAgent() {
+function renderAgentSections() {
   if (!health) return;
   const solWallet = health.solanaWalletAddress || '';
   const evmAddr = health.evmWalletAddress || '';
   const solExplorer = 'https://explorer.solana.com/address/' + solWallet;
   const evmExplorer = 'https://basescan.org/address/' + evmAddr;
   const uptime = health.uptime || 0;
-  const daysOnline = Math.floor(uptime / 86400);
 
-  $('agent-stat-bar').innerHTML = `
-    <div class="stat-card">
-      <div class="stat-label">UPTIME</div>
-      <div class="stat-value">${formatUptime(uptime)}</div>
-      <div class="stat-sub">Since Last Boot</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">DAYS ONLINE</div>
-      <div class="stat-value">${daysOnline}</div>
-      <div class="stat-sub">Continuous Operation</div>
-    </div>
-    <div class="stat-card" style="grid-column: span 1">
-      <div class="stat-label">SOLANA WALLET</div>
-      <div class="stat-value" style="font-size:16px"><a href="${solExplorer}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none" class="copyable" onclick="event.preventDefault();copyText('${solWallet}')" title="Click to copy">${truncAddr(solWallet)}</a></div>
-      <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:10px;word-break:break-all">${solWallet}</div>
-    </div>
-    <div class="stat-card" style="grid-column: span 1">
-      <div class="stat-label">EVM WALLET (BASE)</div>
-      <div class="stat-value" style="font-size:16px"><a href="${evmExplorer}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none" class="copyable" onclick="event.preventDefault();copyText('${evmAddr}')" title="Click to copy">${evmAddr ? truncAddr(evmAddr) : 'NOT SET'}</a></div>
-      <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:10px;word-break:break-all">${evmAddr || ''}</div>
+  $('wallet-bar').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div class="stat-card" style="padding:10px 14px">
+        <div class="stat-label" style="font-size:11px">SOLANA WALLET</div>
+        <div class="copyable" onclick="copyText('${solWallet}')" title="Click to copy" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--orange);cursor:pointer;word-break:break-all;margin-top:4px">${solWallet}</div>
+      </div>
+      <div class="stat-card" style="padding:10px 14px">
+        <div class="stat-label" style="font-size:11px">EVM WALLET (BASE)</div>
+        <div class="copyable" onclick="copyText('${evmAddr}')" title="Click to copy" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--orange);cursor:pointer;word-break:break-all;margin-top:4px">${evmAddr || 'NOT SET'}</div>
+      </div>
+      <div class="stat-card" style="padding:10px 14px">
+        <div class="stat-label" style="font-size:11px">UPTIME</div>
+        <div style="font-family:'Space Mono',monospace;font-size:14px;color:var(--text);margin-top:4px">${formatUptime(uptime)}</div>
+      </div>
     </div>
   `;
 
@@ -1171,10 +1155,6 @@ function renderAgent() {
       <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">STORAGE</span>
         <span style="font-family:'Space Mono',monospace;font-size:12px;color:${storageColor}">${storage}</span>
-      </div>
-      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">GUARDIAN NODES</span>
-        <span style="font-family:'Space Mono',monospace;font-size:12px;color:var(--muted)">${health.storageBackend === 'idiostasis' ? 'ACTIVE' : 'N/A'}</span>
       </div>
       <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">SECRETVM BALANCE</span>
