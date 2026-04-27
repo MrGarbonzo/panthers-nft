@@ -736,15 +736,9 @@ body {
         <div class="empty-state" style="font-size:13px">LOADING...</div>
       </div>
     </div>
-    <div class="columns" style="margin-top:24px" id="agent-columns">
-      <div>
-        <div class="col-header">AGENT PERSONAL FUND</div>
-        <div id="personal-fund"><div class="skeleton skeleton-row"></div></div>
-      </div>
-      <div>
-        <div class="col-header">INFRASTRUCTURE</div>
-        <div id="infra-status"><div class="skeleton skeleton-row"></div></div>
-      </div>
+    <div style="margin-top:24px">
+      <div class="col-header">AGENT OPERATIONS</div>
+      <div id="agent-ops"><div class="skeleton skeleton-row"></div></div>
     </div>
   </div>
 
@@ -1112,53 +1106,53 @@ function renderAgentSections() {
   const donations = pf.totalDonationsUsdc || 0;
   const spendSol = pf.totalInfraSpendSolanaUsdc || 0;
   const spendBase = pf.totalInfraSpendBaseUsdc || 0;
-  const net = fees + donations - spendSol - spendBase;
-
-  $('personal-fund').innerHTML = `
-    <div style="display:grid;gap:12px">
-      <div class="stat-card" style="padding:12px 16px">
-        <div class="stat-label">TOTAL FEES EARNED</div>
-        <div class="stat-value" style="font-size:24px;color:var(--gain)">${formatUSD(fees)}</div>
-      </div>
-      <div class="stat-card" style="padding:12px 16px">
-        <div class="stat-label">TOTAL DONATIONS</div>
-        <div class="stat-value" style="font-size:24px">${formatUSD(donations)}</div>
-      </div>
-      <div class="stat-card" style="padding:12px 16px">
-        <div class="stat-label">INFRA SPEND (SOLANA)</div>
-        <div class="stat-value" style="font-size:24px;color:var(--loss)">${formatUSD(spendSol)}</div>
-      </div>
-      <div class="stat-card" style="padding:12px 16px">
-        <div class="stat-label">INFRA SPEND (BASE)</div>
-        <div class="stat-value" style="font-size:24px;color:var(--loss)">${formatUSD(spendBase)}</div>
-      </div>
-      <div class="stat-card" style="padding:12px 16px;border-color:var(--orange)">
-        <div class="stat-label">NET OPERATING</div>
-        <div class="stat-value" style="font-size:28px;color:${net >= 0 ? 'var(--gain)' : 'var(--loss)'}">${formatUSD(net)}</div>
-      </div>
-    </div>
-  `;
+  const revenue = fees + donations;
+  const costs = spendSol + spendBase;
+  const dailyBurn = 2.0;
+  const net = revenue - costs;
+  const runwayDays = dailyBurn > 0 ? Math.max(0, Math.floor(net / dailyBurn)) : 999;
 
   const storage = health.storageBackend === 'idiostasis' ? 'IDIOSTASIS' : 'SIMPLE';
   const storageColor = health.storageBackend === 'idiostasis' ? 'var(--gain)' : 'var(--muted)';
 
-  $('infra-status').innerHTML = `
-    <div style="display:grid;gap:12px">
-      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">SOLANA RPC</span>
-        <span style="font-family:'Space Mono',monospace;font-size:12px;color:var(--gain)">CONNECTED</span>
+  $('agent-ops').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div class="stat-card" style="padding:14px 16px;text-align:center">
+        <div class="stat-label">REVENUE</div>
+        <div class="stat-value" style="font-size:24px;color:var(--gain)">${formatUSD(revenue)}</div>
+        <div class="stat-sub">fees + donations</div>
       </div>
-      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">USDC MONITOR</span>
-        <span style="font-family:'Space Mono',monospace;font-size:12px;color:var(--gain)">ACTIVE</span>
+      <div class="stat-card" style="padding:14px 16px;text-align:center">
+        <div class="stat-label">COSTS</div>
+        <div class="stat-value" style="font-size:24px;color:var(--loss)">${formatUSD(costs)}</div>
+        <div class="stat-sub">infra spend</div>
       </div>
-      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">STORAGE</span>
-        <span style="font-family:'Space Mono',monospace;font-size:12px;color:${storageColor}">${storage}</span>
+      <div class="stat-card" style="padding:14px 16px;text-align:center;border-color:${net >= 0 ? 'var(--gain)' : 'var(--loss)'}">
+        <div class="stat-label">NET / RUNWAY</div>
+        <div class="stat-value" style="font-size:24px;color:${net >= 0 ? 'var(--gain)' : 'var(--loss)'}">${formatUSD(net)}</div>
+        <div class="stat-sub">${runwayDays > 365 ? '∞' : runwayDays + ' days'} at current burn</div>
       </div>
-      <div class="stat-card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);letter-spacing:2px">SECRETVM BALANCE</span>
-        <span id="secretvm-balance" style="font-family:'Space Mono',monospace;font-size:12px;color:var(--muted)">...</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--gain);display:inline-block"></span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">RPC</span>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--gain);margin-left:auto">CONNECTED</span>
+      </div>
+      <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--gain);display:inline-block"></span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">MONITOR</span>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--gain);margin-left:auto">ACTIVE</span>
+      </div>
+      <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
+        <span style="width:6px;height:6px;border-radius:50%;background:${storageColor};display:inline-block"></span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">STORAGE</span>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:${storageColor};margin-left:auto">${storage}</span>
+      </div>
+      <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block" id="secretvm-dot"></span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">SECRETVM</span>
+        <span id="secretvm-balance" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto">...</span>
       </div>
     </div>
   `;
@@ -1769,6 +1763,7 @@ async function handleAddFunds(tokenId) {
 // SecretVM status
 async function loadSecretVmStatus() {
   const el = document.getElementById('secretvm-balance');
+  const dot = document.getElementById('secretvm-dot');
   if (!el) return;
   try {
     const res = await fetch('/api/secretvm-status');
@@ -1777,12 +1772,13 @@ async function loadSecretVmStatus() {
     if (data.balanceUsdc !== null) {
       const color = data.balanceUsdc < 0.10 ? 'var(--loss)' : data.balanceUsdc < 1 ? 'var(--orange)' : 'var(--gain)';
       el.style.color = color;
-      el.textContent = `${data.balanceUsdc.toFixed(2)} USDC`;
+      el.textContent = `$${data.balanceUsdc.toFixed(2)}`;
+      if (dot) dot.style.background = color;
     } else {
-      el.textContent = 'NOT CONFIGURED';
+      el.textContent = 'N/A';
     }
   } catch {
-    el.textContent = 'UNAVAILABLE';
+    el.textContent = '—';
   }
 }
 
