@@ -478,7 +478,6 @@ async function main(): Promise<void> {
 
   const birdeye = new BirdeyeClient({
     keypair,
-    connection,
     paymentRpcUrl: birdeyePaymentRpc,
     onSpend: (amount) => void onBirdeyeSpend(amount),
   });
