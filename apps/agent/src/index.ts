@@ -25,7 +25,7 @@ import { WalletMonitor } from './persona/wallet-monitor.js';
 import { PersonaContextProvider } from './persona/context-provider.js';
 import { burnPanthersNft } from './solana/nft.js';
 import { recalculateAllNavs } from './state/nav.js';
-import type { PanthersState } from './state/schema.js';
+import { appendActivity, type PanthersState } from './state/schema.js';
 import { XClient } from './social/x-client.js';
 import { XPostingLoop } from './social/x-posting-loop.js';
 import { MoltbookClient } from './moltbook/client.js';
@@ -414,6 +414,13 @@ async function main(): Promise<void> {
         },
       };
       nextState = recalculateAllNavs(nextState);
+      nextState = appendActivity(nextState, {
+        type: 'redeem',
+        wallet: fromWallet,
+        nftLabel: `Panthers #${nft.nftIndex}`,
+        amountUsdc: withdrawnUsdc,
+        txSignature,
+      });
       await db.saveState(nextState, adapter, cacheWriter);
 
       console.log(

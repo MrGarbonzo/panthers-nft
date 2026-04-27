@@ -1271,7 +1271,64 @@ function renderMyNfts() {
     </div>
   `;
 
+  // History section
+  html += `
+    <div class="action-section">
+      <div class="action-title">YOUR HISTORY</div>
+      <div id="activity-log" style="color:var(--muted);font-size:13px">Loading...</div>
+    </div>
+  `;
+
   container.innerHTML = html;
+  loadActivity();
+}
+
+async function loadActivity() {
+  if (!connectedWallet) return;
+  const el = document.getElementById('activity-log');
+  if (!el) return;
+
+  try {
+    const res = await fetch('/api/activity/' + connectedWallet);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const entries = data.activity || [];
+
+    if (entries.length === 0) {
+      el.innerHTML = '<div style="color:var(--muted)">No activity yet.</div>';
+      return;
+    }
+
+    let html = '';
+    for (const e of entries) {
+      const date = new Date(e.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      let icon = '';
+      let desc = '';
+      if (e.type === 'purchase') {
+        icon = '+';
+        desc = `Purchased ${e.nftLabel} for ${formatUSD(e.amountUsdc)} USDC`;
+      } else if (e.type === 'add_funds') {
+        icon = '+';
+        desc = `Added ${formatUSD(e.amountUsdc)} USDC to ${e.nftLabel}`;
+      } else if (e.type === 'redeem') {
+        icon = '-';
+        desc = `Redeemed ${formatUSD(e.amountUsdc)} USDC from ${e.nftLabel}`;
+      }
+      const txLink = e.txSignature
+        ? ` <a href="https://solscan.io/tx/${e.txSignature}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:11px">tx</a>`
+        : '';
+      html += `
+        <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="color:${icon === '+' ? 'var(--gain)' : 'var(--loss)'};font-weight:bold;min-width:14px">${icon}</span>
+          <span style="flex:1">${desc}${txLink}</span>
+          <span style="color:var(--muted);font-size:11px;white-space:nowrap">${date}</span>
+        </div>
+      `;
+    }
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--muted)">Failed to load activity.</div>';
+  }
 }
 
 function toggleOffer() {
@@ -1577,9 +1634,6 @@ async function executeRedeem(tokenId, mintAddr, agentWallet) {
 
     statusEl.innerHTML = `<div class="inline-msg success">NFT sent. USDC will arrive in your wallet shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
     btn.style.display = 'none';
-
-    // Refresh portfolio after a short delay
-    setTimeout(() => loadPortfolio(), 5000);
   } catch (e) {
     console.error('Redeem TX failed:', e);
     const msg = e.message || 'Transaction failed';
@@ -1689,8 +1743,6 @@ async function handleAddFunds(tokenId) {
 
     const el = document.getElementById('nft-action-' + tokenId);
     el.innerHTML = `<div class="inline-msg success">Funds sent. Your NFT position will update shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
-
-    setTimeout(() => loadPortfolio(), 5000);
   } catch (e) {
     console.error('Add funds TX failed:', e);
     const msg = e.message || 'Transaction failed';

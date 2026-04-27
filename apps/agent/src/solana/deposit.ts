@@ -3,6 +3,7 @@ import type { Umi } from '@metaplex-foundation/umi';
 import type { PanthersDb } from '../db/panthers-db.js';
 import type { PanthersStateAdapter } from '../state/adapter.js';
 import type { NftRecord } from '../state/schema.js';
+import { appendActivity } from '../state/schema.js';
 import { recalculateAllNavs } from '../state/nav.js';
 import { mintPanthersNft } from './nft.js';
 import type { PublicCacheWriter } from '../public/cache.js';
@@ -74,6 +75,13 @@ export async function completeSale(params: {
   };
 
   nextState = recalculateAllNavs(nextState);
+  nextState = appendActivity(nextState, {
+    type: 'purchase',
+    wallet: pendingSale.buyerWallet,
+    nftLabel: `Panthers #${nftIndex}`,
+    amountUsdc: params.confirmedAmountUsdc,
+    txSignature: params.txSignature,
+  });
   await params.db.saveState(nextState, params.adapter, params.cacheWriter);
 
   return { mintAddress, tokenId };
@@ -126,6 +134,13 @@ export async function addFundsToNft(params: {
   };
 
   nextState = recalculateAllNavs(nextState);
+  nextState = appendActivity(nextState, {
+    type: 'add_funds',
+    wallet: pendingSale.buyerWallet,
+    nftLabel: `Panthers #${nft.nftIndex}`,
+    amountUsdc: params.confirmedAmountUsdc,
+    txSignature: params.txSignature,
+  });
   await params.db.saveState(nextState, params.adapter, params.cacheWriter);
 
   const finalNft = nextState.nfts[params.targetTokenId];

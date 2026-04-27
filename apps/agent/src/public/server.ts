@@ -133,6 +133,7 @@ export class PublicBalanceServer {
       res.setHeader('Content-Type', 'application/json');
 
       const portfolioMatch = urlPath.match(/^\/api\/portfolio\/([^/]+)$/);
+      const activityMatch = urlPath.match(/^\/api\/activity\/([^/]+)$/);
       const nftMintMatch = urlPath.match(/^\/nft\/([^/]+)$/);
       const nftNameMatch = urlPath.match(/^\/nft\/name\/(.+)$/);
       const nftImageMatch = urlPath.match(/^\/nft-image\/([^/]+)$/);
@@ -192,6 +193,13 @@ export class PublicBalanceServer {
 
       if (portfolioMatch) {
         const result = await this.handlePortfolio(decodeURIComponent(portfolioMatch[1]!));
+        status = result.status;
+        this.respondJson(res, status, result.body);
+        return;
+      }
+
+      if (activityMatch) {
+        const result = await this.handleActivity(decodeURIComponent(activityMatch[1]!));
         status = result.status;
         this.respondJson(res, status, result.body);
         return;
@@ -814,6 +822,22 @@ export class PublicBalanceServer {
         expiresAt: new Date(expiresAt).toISOString(),
       },
     };
+  }
+
+  private async handleActivity(walletAddr: string): Promise<{ status: number; body: unknown }> {
+    const db = this.params.db;
+    const adapter = this.params.adapter;
+    if (!db || !adapter) {
+      return { status: 503, body: { error: 'Database not available' } };
+    }
+
+    const state = await db.loadState(adapter);
+    const log = state.activityLog ?? [];
+    const entries = log
+      .filter((e) => e.wallet.toLowerCase() === walletAddr.toLowerCase())
+      .reverse();
+
+    return { status: 200, body: { activity: entries } };
   }
 
   private respondJson(res: ServerResponse, status: number, body: unknown): void {

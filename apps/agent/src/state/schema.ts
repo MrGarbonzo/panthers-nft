@@ -6,6 +6,18 @@ export interface PersonalFund {
   lastUpdatedAt: number;
 }
 
+export type ActivityType = 'purchase' | 'add_funds' | 'redeem';
+
+export interface ActivityRecord {
+  id: string;
+  type: ActivityType;
+  wallet: string;
+  nftLabel: string;
+  amountUsdc: number;
+  txSignature?: string;
+  timestamp: number;
+}
+
 export interface PanthersState {
   pool: PoolState;
   nfts: Record<string, NftRecord>;
@@ -17,6 +29,7 @@ export interface PanthersState {
   signals: SignalState;
   agentConfig: AgentConfig;
   personalFund: PersonalFund;
+  activityLog?: ActivityRecord[];
 }
 
 export interface P2pListing {
@@ -199,5 +212,21 @@ export function defaultPanthersState(): PanthersState {
       totalInfraSpendBaseUsdc: 0,
       lastUpdatedAt: 0,
     },
+    activityLog: [],
   };
+}
+
+const MAX_ACTIVITY_LOG = 200;
+
+export function appendActivity(
+  state: PanthersState,
+  entry: Omit<ActivityRecord, 'id' | 'timestamp'>,
+): PanthersState {
+  const record: ActivityRecord = {
+    ...entry,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: Date.now(),
+  };
+  const log = [...(state.activityLog ?? []), record].slice(-MAX_ACTIVITY_LOG);
+  return { ...state, activityLog: log };
 }
