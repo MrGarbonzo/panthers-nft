@@ -1387,6 +1387,47 @@ function renderPaymentPanel(containerId, data) {
   }
 }
 
+// Shared: build and send a USDC transfer TX via Phantom with memo
+async function executeUsdcTransfer(data, statusEl) {
+  const provider = window.solana;
+  if (!provider || !provider.isPhantom) {
+    throw new Error('Phantom wallet not found.');
+  }
+
+  const ownerPubkey = new solanaWeb3.PublicKey(connectedWallet);
+  const agentPubkey = new solanaWeb3.PublicKey(data.agentWallet);
+  const usdcMintPubkey = new solanaWeb3.PublicKey(data.usdcMint);
+  const atomicAmount = BigInt(Math.round(data.amountUsdc * 1_000_000));
+
+  const sourceATA = deriveATA(ownerPubkey, usdcMintPubkey);
+  const destATA = deriveATA(agentPubkey, usdcMintPubkey);
+
+  const connection = new solanaWeb3.Connection(
+    provider.connection?.rpcEndpoint || 'https://api.devnet.solana.com',
+    'confirmed'
+  );
+
+  const tx = new solanaWeb3.Transaction();
+
+  const destAccount = await connection.getAccountInfo(destATA);
+  if (!destAccount) {
+    tx.add(createATAInstruction(ownerPubkey, destATA, agentPubkey, usdcMintPubkey));
+  }
+
+  tx.add(createSplTransferInstruction(sourceATA, destATA, ownerPubkey, atomicAmount));
+  tx.add(createMemoInstruction(data.saleId, ownerPubkey));
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  tx.feePayer = ownerPubkey;
+  tx.recentBlockhash = blockhash;
+
+  const { signature: sig } = await provider.signAndSendTransaction(tx);
+  if (statusEl) statusEl.textContent = 'CONFIRMING...';
+  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+
+  return sig;
+}
+
 async function handleBuy() {
   if (!connectedWallet) return;
   const btn = $('buy-btn');
@@ -1403,20 +1444,25 @@ async function handleBuy() {
     });
     const data = await res.json();
 
-    if (res.status === 200) {
-      renderPaymentPanel('buy-result', data);
-    } else if (res.status === 409) {
-      renderPaymentPanel('buy-result', {
-        agentWallet: data.agentWallet,
-        amountUsdc: data.amountUsdc,
-        expiresAt: data.expiresAt,
-      });
-      resultEl.insertAdjacentHTML('beforeend', '<div class="inline-msg info">You already have a pending purchase. Details above.</div>');
-    } else {
-      resultEl.innerHTML = `<div class="inline-msg error">${data.error || 'Something went wrong'}</div>`;
+    if (res.status === 409) {
+      resultEl.innerHTML = '<div class="inline-msg info">You already have a pending purchase. Please wait for it to expire.</div>';
+      btn.disabled = false;
+      btn.textContent = 'BUY AT FIXED PRICE';
+      return;
     }
+    if (res.status !== 200) {
+      resultEl.innerHTML = `<div class="inline-msg error">${data.error || 'Something went wrong'}</div>`;
+      btn.disabled = false;
+      btn.textContent = 'BUY AT FIXED PRICE';
+      return;
+    }
+
+    btn.textContent = 'APPROVE IN WALLET...';
+    const sig = await executeUsdcTransfer(data, btn);
+    resultEl.innerHTML = `<div class="inline-msg success">Payment sent. Your NFT will be minted shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
   } catch (e) {
-    resultEl.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
+    console.error('Buy TX failed:', e);
+    resultEl.innerHTML = `<div class="inline-msg error">${e.message || 'Transaction failed'}</div>`;
   }
   btn.disabled = false;
   btn.textContent = 'BUY AT FIXED PRICE';
@@ -1446,20 +1492,13 @@ async function handleOffer(overrideAmount) {
     const data = await res.json();
 
     if (res.status === 409) {
-      renderPaymentPanel('offer-result', {
-        agentWallet: data.agentWallet,
-        amountUsdc: data.amountUsdc,
-        expiresAt: data.expiresAt,
-      });
-      resultEl.insertAdjacentHTML('beforeend', '<div class="inline-msg info">You already have a pending purchase.</div>');
+      resultEl.innerHTML = '<div class="inline-msg info">You already have a pending purchase. Please wait for it to expire.</div>';
     } else if (res.status === 200) {
       if (data.decision === 'accept') {
-        renderPaymentPanel('offer-result', {
-          agentWallet: data.agentWallet,
-          amountUsdc: data.amountUsdc,
-          expiresAt: data.expiresAt,
-        });
-        resultEl.insertAdjacentHTML('beforeend', `<div class="inline-msg success">Offer accepted: ${data.reason}</div>`);
+        resultEl.innerHTML = `<div class="inline-msg success">Offer accepted: ${data.reason}</div>`;
+        btn.textContent = 'APPROVE IN WALLET...';
+        const sig = await executeUsdcTransfer(data, btn);
+        resultEl.innerHTML = `<div class="inline-msg success">Payment sent. Your NFT will be minted shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
       } else if (data.decision === 'counter') {
         resultEl.innerHTML = `
           <div class="inline-msg info">
@@ -1477,7 +1516,8 @@ async function handleOffer(overrideAmount) {
       resultEl.innerHTML = `<div class="inline-msg error">${data.error || 'Something went wrong'}</div>`;
     }
   } catch (e) {
-    resultEl.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
+    console.error('Offer TX failed:', e);
+    resultEl.innerHTML = `<div class="inline-msg error">${e.message || 'Transaction failed'}</div>`;
   }
   btn.disabled = false;
   btn.textContent = 'SUBMIT OFFER';
@@ -1712,51 +1752,9 @@ async function handleAddFunds(tokenId) {
       return;
     }
 
-    // Step 2: Build USDC transfer TX with memo
-    const provider = window.solana;
-    if (!provider || !provider.isPhantom) {
-      resultEl.innerHTML = '<div class="inline-msg error">Phantom wallet not found.</div>';
-      btn.disabled = false;
-      btn.textContent = 'SEND';
-      return;
-    }
-
+    // Step 2: Build and send USDC transfer TX with memo via Phantom
     btn.textContent = 'APPROVE IN WALLET...';
-
-    const ownerPubkey = new solanaWeb3.PublicKey(connectedWallet);
-    const agentPubkey = new solanaWeb3.PublicKey(data.agentWallet);
-    const usdcMintPubkey = new solanaWeb3.PublicKey(data.usdcMint);
-    const atomicAmount = BigInt(Math.round(amount * 1_000_000));
-
-    const sourceATA = deriveATA(ownerPubkey, usdcMintPubkey);
-    const destATA = deriveATA(agentPubkey, usdcMintPubkey);
-
-    const connection = new solanaWeb3.Connection(
-      provider.connection?.rpcEndpoint || 'https://api.devnet.solana.com',
-      'confirmed'
-    );
-
-    const tx = new solanaWeb3.Transaction();
-
-    // Create agent USDC ATA if it doesn't exist
-    const destAccount = await connection.getAccountInfo(destATA);
-    if (!destAccount) {
-      tx.add(createATAInstruction(ownerPubkey, destATA, agentPubkey, usdcMintPubkey));
-    }
-
-    // USDC transfer
-    tx.add(createSplTransferInstruction(sourceATA, destATA, ownerPubkey, atomicAmount));
-
-    // Memo with saleId so agent matches this to the right NFT
-    tx.add(createMemoInstruction(data.saleId, ownerPubkey));
-
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    tx.feePayer = ownerPubkey;
-    tx.recentBlockhash = blockhash;
-
-    const { signature: sig } = await provider.signAndSendTransaction(tx);
-    btn.textContent = 'CONFIRMING...';
-    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+    const sig = await executeUsdcTransfer(data, btn);
 
     const el = document.getElementById('nft-action-' + tokenId);
     el.innerHTML = `<div class="inline-msg success">Funds sent. Your NFT position will update shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
