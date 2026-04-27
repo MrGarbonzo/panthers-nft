@@ -130,7 +130,7 @@ export class BirdeyeClient {
         volume_24h_usd?: number;
         v24hUSD?: number;
       }>;
-    }>(`/defi/v3/token/list?sort_by=v24hUSD&sort_type=desc&limit=10`);
+    }>(`/defi/v3/token/list?sort_by=volume_24h_usd&sort_type=desc&limit=10`);
     const tokens = data.tokens ?? [];
     return tokens.map((t) => ({
       address: t.address,
