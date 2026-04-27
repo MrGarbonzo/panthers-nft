@@ -51,6 +51,7 @@ export interface PublicBalanceServerParams {
   nftImagesDir?: string;
   storageBackend?: string;
   solanaWalletAddress?: string;
+  evmWalletAddress?: string;
 }
 
 const DEFAULT_PORT = 8080;
@@ -63,6 +64,7 @@ export class PublicBalanceServer {
   private readonly nftImagesDir: string;
   private readonly storageBackend: string;
   private readonly solanaWalletAddress: string;
+  private readonly evmWalletAddress: string;
 
   constructor(private readonly params: PublicBalanceServerParams) {
     this.port = params.port ?? DEFAULT_PORT;
@@ -71,6 +73,7 @@ export class PublicBalanceServer {
     this.nftImagesDir = params.nftImagesDir ?? '/data/nft-images';
     this.storageBackend = params.storageBackend ?? 'simple';
     this.solanaWalletAddress = params.solanaWalletAddress ?? '';
+    this.evmWalletAddress = params.evmWalletAddress ?? '';
   }
 
   setLlmDependencies(llmRouter: LLMRouter, personaCtx: PersonaContextProvider): void {
@@ -161,6 +164,7 @@ export class PublicBalanceServer {
           devMode: this.devMode,
           storageBackend: this.storageBackend,
           solanaWalletAddress: this.solanaWalletAddress,
+          evmWalletAddress: this.evmWalletAddress,
           personalFund: cache?.stats?.personalFund ?? null,
           timestamp: Date.now(),
         });

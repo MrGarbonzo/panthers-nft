@@ -117,6 +117,10 @@ async function main(): Promise<void> {
     }
   }
 
+  // EVM wallet — generated on first boot, stored in DB
+  const { initializeEvmWallet } = await import('./wallet/evm-wallet.js');
+  const evmWallet = initializeEvmWallet(db);
+
   const publicServer = new PublicBalanceServer({
     cacheWriter,
     connection,
@@ -128,12 +132,9 @@ async function main(): Promise<void> {
     nftImagesDir,
     storageBackend,
     solanaWalletAddress: keypair.publicKey.toBase58(),
+    evmWalletAddress: evmWallet.address,
   });
   publicServer.start();
-
-  // EVM wallet — generated on first boot, stored in DB
-  const { initializeEvmWallet } = await import('./wallet/evm-wallet.js');
-  const evmWallet = initializeEvmWallet(db);
 
   // ERC-8004 registration
   try {

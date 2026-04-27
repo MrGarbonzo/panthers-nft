@@ -1097,8 +1097,10 @@ function formatUptime(seconds) {
 
 function renderAgent() {
   if (!health) return;
-  const wallet = health.solanaWalletAddress || '';
-  const explorerUrl = 'https://explorer.solana.com/address/' + wallet;
+  const solWallet = health.solanaWalletAddress || '';
+  const evmAddr = health.evmWalletAddress || '';
+  const solExplorer = 'https://explorer.solana.com/address/' + solWallet;
+  const evmExplorer = 'https://basescan.org/address/' + evmAddr;
   const uptime = health.uptime || 0;
   const daysOnline = Math.floor(uptime / 86400);
 
@@ -1109,14 +1111,19 @@ function renderAgent() {
       <div class="stat-sub">Since Last Boot</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">AGENT WALLET</div>
-      <div class="stat-value" style="font-size:18px"><a href="${explorerUrl}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none">${truncAddr(wallet)}</a></div>
-      <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:11px">${wallet}</div>
-    </div>
-    <div class="stat-card">
       <div class="stat-label">DAYS ONLINE</div>
       <div class="stat-value">${daysOnline}</div>
       <div class="stat-sub">Continuous Operation</div>
+    </div>
+    <div class="stat-card" style="grid-column: span 1">
+      <div class="stat-label">SOLANA WALLET</div>
+      <div class="stat-value" style="font-size:16px"><a href="${solExplorer}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none" class="copyable" onclick="event.preventDefault();copyText('${solWallet}')" title="Click to copy">${truncAddr(solWallet)}</a></div>
+      <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:10px;word-break:break-all">${solWallet}</div>
+    </div>
+    <div class="stat-card" style="grid-column: span 1">
+      <div class="stat-label">EVM WALLET (BASE)</div>
+      <div class="stat-value" style="font-size:16px"><a href="${evmExplorer}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none" class="copyable" onclick="event.preventDefault();copyText('${evmAddr}')" title="Click to copy">${evmAddr ? truncAddr(evmAddr) : 'NOT SET'}</a></div>
+      <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:10px;word-break:break-all">${evmAddr || ''}</div>
     </div>
   `;
 
