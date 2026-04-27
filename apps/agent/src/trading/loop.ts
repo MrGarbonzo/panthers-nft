@@ -32,7 +32,7 @@ import { recalculateAllNavs } from '../state/nav.js';
 import type { PublicCacheWriter } from '../public/cache.js';
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
-const MIN_POOL_TO_TRADE = 10;
+const MIN_POOL_TO_TRADE = 1;
 const MAX_TOP10_POSITIONS = 3;
 const PER_TRADE_POOL_FRACTION = 0.1;
 const MIN_LLM_LIQUIDITY_USDC = 500_000;
@@ -49,6 +49,7 @@ export interface TradingLoopParams {
   cacheWriter?: PublicCacheWriter;
   intervalMs?: number;
   personaCtx?: PersonaContextProvider;
+  paperTrading?: boolean;
   onTradeExecuted?: (context: string) => void;
 }
 
@@ -365,22 +366,46 @@ export class TradingLoop {
     const inputMint = args.side === 'buy' ? USDC_MINT : args.tokenMint;
     const outputMint = args.side === 'buy' ? args.tokenMint : USDC_MINT;
 
-    let swap;
-    try {
-      swap = await this.params.jupiter.executeSwap({
+    let outputAmount: number;
+    let txSignature: string;
+
+    if (this.params.paperTrading) {
+      // Paper trading: get quote for realistic price, skip on-chain swap
+      const quote = await this.params.jupiter.getQuote({
         inputMint,
         outputMint,
         amountUsdc: args.proposedAmountUsdc,
       });
-    } catch (err) {
-      console.error(`${args.bucket}: executeSwap failed:`, err);
-      return state;
+      if (!quote) {
+        console.log(`${args.bucket}: [PAPER] no Jupiter route for ${args.tokenSymbol}`);
+        return state;
+      }
+      outputAmount = quote.outAmount / 1_000_000; // atomic → decimal
+      txSignature = `paper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      console.log(
+        `${args.bucket}: [PAPER] ${args.side} ${args.tokenSymbol} ${args.proposedAmountUsdc.toFixed(2)} USDC → ${outputAmount.toFixed(6)} tokens`,
+      );
+    } else {
+      // Real trading: execute on-chain swap
+      let swap;
+      try {
+        swap = await this.params.jupiter.executeSwap({
+          inputMint,
+          outputMint,
+          amountUsdc: args.proposedAmountUsdc,
+        });
+      } catch (err) {
+        console.error(`${args.bucket}: executeSwap failed:`, err);
+        return state;
+      }
+      outputAmount = swap.outputAmount;
+      txSignature = swap.txSignature;
     }
 
     const price = args.side === 'buy'
-      ? args.proposedAmountUsdc / (swap.outputAmount || 1)
-      : (swap.outputAmount || 0) / Math.max(args.proposedAmountUsdc, 1e-9);
-    const size = args.side === 'buy' ? swap.outputAmount : args.proposedAmountUsdc;
+      ? args.proposedAmountUsdc / (outputAmount || 1)
+      : (outputAmount || 0) / Math.max(args.proposedAmountUsdc, 1e-9);
+    const size = args.side === 'buy' ? outputAmount : args.proposedAmountUsdc;
 
     const trade: TradeRecord = {
       tokenMint: args.tokenMint,
@@ -392,7 +417,7 @@ export class TradingLoop {
       bucket: args.bucket,
       llmDecision: decision.decision,
       llmReasoning: decision.reasoning,
-      txSignature: swap.txSignature,
+      txSignature,
     };
 
     let nextPositions: Position[];

@@ -530,6 +530,11 @@ async function main(): Promise<void> {
     } catch {}
   }, 6 * 60 * 60 * 1000);
 
+  const paperTrading = db.config.get(CONFIG.PAPER_TRADING, {
+    envKey: 'PAPER_TRADING',
+    defaultValue: 'true',
+  }) === 'true';
+
   const tradingLoop = new TradingLoop({
     db,
     adapter,
@@ -539,13 +544,14 @@ async function main(): Promise<void> {
     connection,
     cacheWriter,
     personaCtx,
+    paperTrading,
     onTradeExecuted: (context) => {
       void xPostingLoop?.onEvent('trade_executed', context);
       void moltbookLoop.onEvent('trade_executed', context);
     },
   });
   tradingLoop.start();
-  console.log('Trading loop started');
+  console.log(`Trading loop started (paper trading: ${paperTrading})`);
 
   const ticker = new AuctionTicker({ db, adapter, cacheWriter });
   ticker.start();

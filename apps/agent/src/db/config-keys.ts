@@ -25,6 +25,7 @@ export const CONFIG = {
   NFT_PRICE_USDC: 'nft_price_usdc',
   ERC8004_TOKEN_ID: 'erc8004_token_id',
 
+  PAPER_TRADING: 'paper_trading',
   REDEEM_FEE_PCT: 'redeem_fee_pct',
 
   MOLTBOOK_API_KEY: 'moltbook_api_key',
