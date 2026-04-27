@@ -6,6 +6,7 @@
 <title>Panthers Fund</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
 <style>
 :root {
   --bg: #0A0A0A;
@@ -1425,6 +1426,47 @@ async function handleOffer(overrideAmount) {
   btn.textContent = 'SUBMIT OFFER';
 }
 
+// SPL Token helpers using raw @solana/web3.js
+const TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const ASSOCIATED_TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+
+function deriveATA(owner, mint) {
+  return solanaWeb3.PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  )[0];
+}
+
+function createATAInstruction(payer, ata, owner, mint) {
+  return new solanaWeb3.TransactionInstruction({
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: ata, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+    data: Buffer.alloc(0),
+  });
+}
+
+function createSplTransferInstruction(source, dest, owner, amount) {
+  const data = Buffer.alloc(9);
+  data.writeUInt8(3, 0); // Transfer instruction index
+  data.writeBigUInt64LE(BigInt(amount), 1);
+  return new solanaWeb3.TransactionInstruction({
+    keys: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: dest, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: true, isWritable: false },
+    ],
+    programId: TOKEN_PROGRAM_ID,
+    data,
+  });
+}
+
 async function handleDestroy(tokenId, mint, nav) {
   if (!connectedWallet) return;
   const el = document.getElementById('nft-action-' + tokenId);
@@ -1460,22 +1502,80 @@ async function handleDestroy(tokenId, mint, nav) {
           <span class="payment-label">YOU RECEIVE</span>
           <span class="payment-value" style="color:var(--gain);font-size:16px">~${formatUSD(data.estimatedReturnUsdc)} USDC</span>
         </div>
-        <div class="payment-row">
-          <span class="payment-label">SEND NFT TO</span>
-          <span class="payment-value copyable" onclick="copyText('${data.agentWallet}')" title="Click to copy">${data.agentWallet}</span>
+        <div style="margin-top:16px;font-size:12px;color:var(--muted)">
+          Your NFT will be sent to the agent and destroyed. USDC will be returned to your wallet automatically.
         </div>
-        <div class="payment-row">
-          <span class="payment-label">NFT MINT</span>
-          <span class="payment-value copyable" onclick="copyText('${data.nftMint}')" title="Click to copy" style="font-size:12px">${data.nftMint}</span>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="action-btn small danger" id="confirm-redeem-${tokenId}" onclick="executeRedeem('${tokenId}','${data.nftMint}','${data.agentWallet}')">CONFIRM REDEEM</button>
+          <button class="action-btn small" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border)" onclick="document.getElementById('nft-action-${tokenId}').innerHTML=''">CANCEL</button>
         </div>
-        <div style="margin-top:12px;font-size:12px;color:var(--muted)">
-          Send your NFT to the agent wallet using Phantom's Send feature. USDC will be returned to your wallet automatically.
-        </div>
-        <button class="action-btn small" style="margin-top:12px" onclick="document.getElementById('nft-action-${tokenId}').innerHTML=''">CLOSE</button>
+        <div id="redeem-status-${tokenId}"></div>
       </div>
     `;
   } catch (e) {
     el.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
+  }
+}
+
+async function executeRedeem(tokenId, mintAddr, agentWallet) {
+  const btn = document.getElementById('confirm-redeem-' + tokenId);
+  const statusEl = document.getElementById('redeem-status-' + tokenId);
+  if (!btn || !statusEl) return;
+
+  btn.disabled = true;
+  btn.textContent = 'SENDING...';
+  statusEl.innerHTML = '';
+
+  try {
+    const provider = window.solana;
+    if (!provider || !provider.isPhantom) {
+      statusEl.innerHTML = '<div class="inline-msg error">Phantom wallet not found.</div>';
+      btn.disabled = false;
+      btn.textContent = 'CONFIRM REDEEM';
+      return;
+    }
+
+    const mintPubkey = new solanaWeb3.PublicKey(mintAddr);
+    const ownerPubkey = new solanaWeb3.PublicKey(connectedWallet);
+    const agentPubkey = new solanaWeb3.PublicKey(agentWallet);
+
+    const sourceATA = deriveATA(ownerPubkey, mintPubkey);
+    const destATA = deriveATA(agentPubkey, mintPubkey);
+
+    const connection = new solanaWeb3.Connection(
+      provider.connection?.rpcEndpoint || 'https://api.devnet.solana.com',
+      'confirmed'
+    );
+
+    const tx = new solanaWeb3.Transaction();
+
+    // Check if agent's ATA exists, create if not
+    const destAccount = await connection.getAccountInfo(destATA);
+    if (!destAccount) {
+      tx.add(createATAInstruction(ownerPubkey, destATA, agentPubkey, mintPubkey));
+    }
+
+    // Transfer 1 NFT token
+    tx.add(createSplTransferInstruction(sourceATA, destATA, ownerPubkey, 1));
+
+    tx.feePayer = ownerPubkey;
+    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+    const signed = await provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize());
+    await connection.confirmTransaction(sig, 'confirmed');
+
+    statusEl.innerHTML = '<div class="inline-msg success">NFT sent. USDC will arrive in your wallet shortly.</div>';
+    btn.style.display = 'none';
+
+    // Refresh portfolio after a short delay
+    setTimeout(() => loadPortfolio(), 5000);
+  } catch (e) {
+    console.error('Redeem TX failed:', e);
+    const msg = e.message || 'Transaction failed';
+    statusEl.innerHTML = '<div class="inline-msg error">' + msg + '</div>';
+    btn.disabled = false;
+    btn.textContent = 'CONFIRM REDEEM';
   }
 }
 
