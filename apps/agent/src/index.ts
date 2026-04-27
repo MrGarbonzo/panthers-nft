@@ -131,38 +131,35 @@ async function main(): Promise<void> {
   });
   publicServer.start();
 
+  // EVM wallet — generated on first boot, stored in DB
+  const { initializeEvmWallet } = await import('./wallet/evm-wallet.js');
+  const evmWallet = initializeEvmWallet(db);
+
   // ERC-8004 registration
   try {
     const agentHost = process.env.AGENT_HOST;
     if (!agentHost) {
       console.log('[registry] AGENT_HOST not set — skipping ERC-8004 registration');
     } else {
-      const evmMnemonic = process.env.EVM_MNEMONIC;
-      if (!evmMnemonic) {
-        console.log('[registry] EVM_MNEMONIC not set — skipping ERC-8004 registration');
+      const { ERC8004Client, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA } = await import('@idiostasis/erc8004-client');
+      const baseRpcUrl = process.env.BASE_RPC_URL ?? 'https://sepolia.base.org';
+      const port = process.env.PORT ?? '3000';
+      const wallet = { address: evmWallet.address, account: { address: evmWallet.address }, signTransaction: async () => '' };
+      const registry = new ERC8004Client(baseRpcUrl, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA, 'base-sepolia');
+      const existingTokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
+      if (!existingTokenId) {
+        const result = await registry.register({
+          name: 'Panthers Fund',
+          description: 'Autonomous AI NFT fund on Solana',
+          services: [{ name: 'dashboard', endpoint: `http://${agentHost}:${port}` }],
+          wallet,
+        });
+        db.config.set(CONFIG.ERC8004_TOKEN_ID, result.tokenId.toString());
+        console.log(`[registry] registered, token ID: ${result.tokenId}`);
       } else {
-        const { mnemonicToAccount } = await import('viem/accounts');
-        const { ERC8004Client, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA } = await import('@idiostasis/erc8004-client');
-        const baseRpcUrl = process.env.BASE_RPC_URL ?? 'https://sepolia.base.org';
-        const port = process.env.PORT ?? '3000';
-        const account = mnemonicToAccount(evmMnemonic);
-        const wallet = { address: account.address, account, signTransaction: async () => '' };
-        const registry = new ERC8004Client(baseRpcUrl, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA, 'base-sepolia');
-        const existingTokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
-        if (!existingTokenId) {
-          const result = await registry.register({
-            name: 'Panthers Fund',
-            description: 'Autonomous AI NFT fund on Solana',
-            services: [{ name: 'dashboard', endpoint: `http://${agentHost}:${port}` }],
-            wallet,
-          });
-          db.config.set(CONFIG.ERC8004_TOKEN_ID, result.tokenId.toString());
-          console.log(`[registry] registered, token ID: ${result.tokenId}`);
-        } else {
-          const tokenId = Number(existingTokenId);
-          await registry.updateEndpoint(tokenId, 'dashboard', `http://${agentHost}:${port}`, wallet);
-          console.log(`[registry] endpoint updated, token ID: ${existingTokenId}`);
-        }
+        const tokenId = Number(existingTokenId);
+        await registry.updateEndpoint(tokenId, 'dashboard', `http://${agentHost}:${port}`, wallet);
+        console.log(`[registry] endpoint updated, token ID: ${existingTokenId}`);
       }
     }
   } catch (err) {
@@ -172,35 +169,22 @@ async function main(): Promise<void> {
   // SecretVM x402 client
   let secretVmClient: import('@idiostasis/x402-client').SecretVmClient | null = null;
   try {
-    const evmMnemonic = process.env.EVM_MNEMONIC;
-    if (evmMnemonic) {
-      const { mnemonicToAccount } = await import('viem/accounts');
-      const { X402Client, SecretVmClient } = await import('@idiostasis/x402-client');
-      const account = mnemonicToAccount(evmMnemonic);
-      const evmWallet = {
-        address: account.address,
-        signMessage: async (msg: string | Uint8Array) =>
-          account.signMessage({ message: typeof msg === 'string' ? msg : { raw: msg } }),
-        signTypedData: async (params: any) => account.signTypedData(params),
-      };
-      const x402 = new X402Client(evmWallet);
-      const secretVmBaseUrl = db.config.get(CONFIG.SECRETVM_BASE_URL, {
-        envKey: 'SECRETVM_BASE_URL',
-        defaultValue: 'https://secretai.scrtlabs.com',
-      })!;
-      secretVmClient = new SecretVmClient(evmWallet, x402, secretVmBaseUrl);
+    const { X402Client, SecretVmClient } = await import('@idiostasis/x402-client');
+    const x402 = new X402Client(evmWallet);
+    const secretVmBaseUrl = db.config.get(CONFIG.SECRETVM_BASE_URL, {
+      envKey: 'SECRETVM_BASE_URL',
+      defaultValue: 'https://secretai.scrtlabs.com',
+    })!;
+    secretVmClient = new SecretVmClient(evmWallet, x402, secretVmBaseUrl);
 
-      const balance = await secretVmClient.getBalance();
-      db.config.set(CONFIG.SECRETVM_BALANCE, String(balance));
-      console.log(`[secretvm] Balance: ${balance} (${(balance / 1_000_000).toFixed(2)} USDC)`);
+    const balance = await secretVmClient.getBalance();
+    db.config.set(CONFIG.SECRETVM_BALANCE, String(balance));
+    console.log(`[secretvm] Balance: ${balance} (${(balance / 1_000_000).toFixed(2)} USDC)`);
 
-      const vmId = db.config.get(CONFIG.SECRETVM_VM_ID, { envKey: 'SECRETVM_VM_ID' });
-      if (vmId) {
-        const status = await secretVmClient.getVmStatus(vmId);
-        console.log(`[secretvm] VM ${vmId}: ${status.status}`);
-      }
-    } else {
-      console.log('[secretvm] EVM_MNEMONIC not set — skipping SecretVM client');
+    const vmId = db.config.get(CONFIG.SECRETVM_VM_ID, { envKey: 'SECRETVM_VM_ID' });
+    if (vmId) {
+      const status = await secretVmClient.getVmStatus(vmId);
+      console.log(`[secretvm] VM ${vmId}: ${status.status}`);
     }
   } catch (err) {
     console.error('[secretvm] initialization failed (non-fatal):', err);
