@@ -1116,27 +1116,26 @@ function renderAgentSections() {
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
         <span style="width:6px;height:6px;border-radius:50%;background:var(--gain);display:inline-block"></span>
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">RPC</span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">SOLANA RPC</span>
         <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--gain);margin-left:auto">CONNECTED</span>
       </div>
       <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
         <span style="width:6px;height:6px;border-radius:50%;background:var(--gain);display:inline-block"></span>
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">MONITOR</span>
-        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--gain);margin-left:auto">ACTIVE</span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">BASE RPC</span>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--gain);margin-left:auto">CONNECTED</span>
       </div>
       <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
-        <span style="width:6px;height:6px;border-radius:50%;background:${storageColor};display:inline-block"></span>
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">STORAGE</span>
-        <span style="font-family:'Space Mono',monospace;font-size:11px;color:${storageColor};margin-left:auto">${storage}</span>
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block"></span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">GUARDIAN NODES</span>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto">${health.storageBackend === 'idiostasis' ? '2' : '0'}</span>
       </div>
       <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
-        <span style="width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block" id="secretvm-dot"></span>
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">SECRETVM</span>
-        <span id="secretvm-balance" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto">...</span>
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block"></span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">BACKUP AGENTS</span>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto">0</span>
       </div>
     </div>
   `;
-  loadSecretVmStatus();
 }
 
 // ── My NFTs ──
