@@ -237,7 +237,17 @@ async function main(): Promise<void> {
       });
 
       // Strip HTML wrapping if present
-      const yaml = composeYaml.replace(/<\/?pre[^>]*>/gi, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      const yaml = composeYaml
+        .replace(/^[\s\S]*?<pre[^>]*>/i, '')
+        .replace(/<\/pre>[\s\S]*$/i, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#34;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\u200B/g, '')
+        .trim();
 
       const services = parseCompose(yaml);
       const results = await Promise.all(
