@@ -64,10 +64,23 @@ export class BirdeyeClient {
         return payload;
       },
     };
+    const onSpend = this.onSpend;
     const client = new x402Client()
       .register('solana:mainnet', svmScheme)
       .register('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', svmScheme)
-      .registerExtension(paymentIdExtension);
+      .registerExtension(paymentIdExtension)
+      .onAfterPaymentCreation(async (ctx) => {
+        try {
+          const pr = ctx.paymentRequired as any;
+          const reqs = pr?.paymentRequirements ?? pr?.accepts ?? [];
+          const amount = Number(reqs[0]?.amount ?? 0);
+          const usdc = amount / 1_000_000;
+          if (usdc > 0) {
+            onSpend(usdc);
+            console.log(`[Birdeye x402] Paid ${usdc.toFixed(4)} USDC`);
+          }
+        } catch {}
+      });
     this.x402Fetch = wrapFetchWithPayment(globalThis.fetch, client);
     this.initialized = true;
   }
