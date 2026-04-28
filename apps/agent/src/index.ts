@@ -247,6 +247,7 @@ async function main(): Promise<void> {
         .replace(/&#34;/g, '"')
         .replace(/&#39;/g, "'")
         .replace(/\u200B/g, '')
+        .replace(/&#\d+;/g, '')
         .trim();
 
       const services = parseCompose(yaml);
