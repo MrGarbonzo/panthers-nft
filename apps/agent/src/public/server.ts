@@ -137,6 +137,12 @@ export class PublicBalanceServer {
 
       const portfolioMatch = urlPath.match(/^\/api\/portfolio\/([^/]+)$/);
       const activityMatch = urlPath.match(/^\/api\/activity\/([^/]+)$/);
+      if (urlPath === '/api/provenance') {
+        const result = this.handleProvenance();
+        status = result.status;
+        this.respondJson(res, status, result.body);
+        return;
+      }
       if (urlPath === '/api/attestation') {
         const result = this.handleAttestation();
         status = result.status;
@@ -855,6 +861,18 @@ export class PublicBalanceServer {
         expiresAt: new Date(expiresAt).toISOString(),
       },
     };
+  }
+
+  private handleProvenance(): { status: number; body: unknown } {
+    const db = this.params.db;
+    if (!db) return { status: 503, body: { error: 'Database not available' } };
+    const raw = db.config.get(CONFIG.PROVENANCE_RESULT);
+    if (!raw) return { status: 200, body: { provenance: null } };
+    try {
+      return { status: 200, body: { provenance: JSON.parse(raw) } };
+    } catch {
+      return { status: 200, body: { provenance: null } };
+    }
   }
 
   private handleAttestation(): { status: number; body: unknown } {

@@ -31,6 +31,7 @@ export const CONFIG = {
   SECRETVM_BALANCE: 'secretvm_balance',
   SECRETVM_DOMAIN: 'secretvm_domain',
   ATTESTATION_RESULT: 'attestation_result',
+  PROVENANCE_RESULT: 'provenance_result',
   REDEEM_FEE_PCT: 'redeem_fee_pct',
 
   MOLTBOOK_API_KEY: 'moltbook_api_key',

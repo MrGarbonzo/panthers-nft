@@ -218,6 +218,50 @@ async function main(): Promise<void> {
     console.error('[attestation] Verification failed (non-fatal):', err);
   }
 
+  // Code provenance — link running images to Git commits
+  try {
+    const vmDomain = db.config.get(CONFIG.SECRETVM_DOMAIN, { envKey: 'SECRETVM_DOMAIN' });
+    if (vmDomain) {
+      const { parseCompose, parseImageRef, resolveImage } = await import('code-provenance');
+      console.log('[provenance] Resolving image provenance...');
+
+      // Fetch compose from VM's attestation endpoint (self-signed cert)
+      const https = await import('node:https');
+      const composeYaml = await new Promise<string>((resolve, reject) => {
+        https.get(`https://${vmDomain}:29343/docker-compose`, { rejectUnauthorized: false }, (res) => {
+          let data = '';
+          res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+          res.on('end', () => resolve(data));
+          res.on('error', reject);
+        }).on('error', reject);
+      });
+
+      // Strip HTML wrapping if present
+      const yaml = composeYaml.replace(/<\/?pre[^>]*>/gi, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+
+      const services = parseCompose(yaml);
+      const results = await Promise.all(
+        services.map(([svc, img]: [string, string]) => resolveImage(svc, parseImageRef(img))),
+      );
+
+      const summary = results.map((r: any) => ({
+        service: r.service,
+        image: r.image,
+        repo: r.repo,
+        commit: r.commit,
+        commitUrl: r.commit_url,
+        status: r.status,
+        confidence: r.confidence,
+      }));
+      db.config.set(CONFIG.PROVENANCE_RESULT, JSON.stringify(summary));
+      for (const r of summary) {
+        console.log(`[provenance] ${r.service}: ${r.status} → ${r.commitUrl || 'unresolved'}`);
+      }
+    }
+  } catch (err) {
+    console.error('[provenance] Resolution failed (non-fatal):', err);
+  }
+
   if (devMode) {
     console.log('DEV_MODE=true — storage-only boot');
     console.log('Panthers agent initialized (storage-only mode)');

@@ -757,6 +757,23 @@ body {
         <div class="empty-state" style="font-size:13px">LOADING ATTESTATION...</div>
       </div>
 
+      <h2>CODE PROVENANCE</h2>
+      <div id="provenance-panel" style="margin-bottom:32px">
+        <div class="empty-state" style="font-size:13px">LOADING PROVENANCE...</div>
+      </div>
+
+      <h2>DOCKER COMPOSE FILES</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:32px">
+        <a href="https://github.com/MrGarbonzo/panthers-nft/blob/main/docker/docker-compose.secretvm.yml" target="_blank" rel="noopener" class="stat-card" style="padding:14px 16px;text-decoration:none;display:block">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--orange);letter-spacing:1px">AGENT COMPOSE</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">docker/docker-compose.secretvm.yml</div>
+        </a>
+        <a href="https://github.com/MrGarbonzo/idiostasis-protocol/blob/main/docker/docker-compose.guardian.yml" target="_blank" rel="noopener" class="stat-card" style="padding:14px 16px;text-decoration:none;display:block">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--orange);letter-spacing:1px">GUARDIAN COMPOSE</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">docker/docker-compose.guardian.yml</div>
+        </a>
+      </div>
+
       <h2>WHAT IS PANTHERS FUND</h2>
       <p>Panthers Fund is an autonomous AI trading fund operating on the Solana blockchain. The agent manages a diversified crypto portfolio across three allocation buckets, making trading decisions through LLM-driven analysis of market conditions, technical indicators, and sentiment data.</p>
       <p>Each NFT share represents proportional ownership of the fund's total value. Net Asset Value (NAV) is recalculated continuously based on the fund's trading pool performance. The agent operates 24/7 without human intervention.</p>
@@ -919,6 +936,7 @@ async function fetchAll() {
     renderNfts();
     loadTradingLog();
     loadAttestation();
+    loadProvenance();
     $('last-updated').textContent = timeAgo(stats.lastUpdatedAt);
   } catch (e) {
     console.error('Fetch failed:', e);
@@ -1859,6 +1877,61 @@ async function loadAttestation() {
     `;
   } catch {
     panel.innerHTML = '<div class="empty-state">FAILED TO LOAD ATTESTATION</div>';
+  }
+}
+
+// Code provenance
+async function loadProvenance() {
+  const panel = document.getElementById('provenance-panel');
+  if (!panel) return;
+  try {
+    const res = await fetch('/api/provenance');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const prov = data.provenance;
+
+    if (!prov || prov.length === 0) {
+      panel.innerHTML = `
+        <div class="stat-card" style="padding:16px;border-color:var(--muted)">
+          <div style="font-size:13px;color:var(--muted)">Provenance not available. SECRETVM_DOMAIN may not be set, or resolution is pending.</div>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '<div style="display:grid;gap:8px">';
+    for (const r of prov) {
+      const statusColor = r.status === 'resolved' ? 'var(--gain)' : 'var(--loss)';
+      const confColor = r.confidence === 'exact' ? 'var(--gain)' : 'var(--orange)';
+      const commitShort = r.commit ? r.commit.slice(0, 12) : '—';
+      const commitLink = r.commitUrl
+        ? `<a href="${r.commitUrl}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none;font-family:'Space Mono',monospace;font-size:11px">${commitShort}</a>`
+        : `<span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${commitShort}</span>`;
+      const repoLink = r.repo
+        ? `<a href="${r.repo}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;font-size:12px">${r.repo.replace('https://github.com/', '')}</a>`
+        : '<span style="color:var(--muted);font-size:12px">—</span>';
+
+      html += `
+        <div class="stat-card" style="padding:12px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1px">${r.service}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:11px;color:${statusColor}">${r.status.toUpperCase()}</span>
+          </div>
+          <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:6px;word-break:break-all">${r.image}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>${repoLink}</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:10px;color:${confColor}">${r.confidence || ''}</span>
+              ${commitLink}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    html += '</div>';
+    panel.innerHTML = html;
+  } catch {
+    panel.innerHTML = '<div class="empty-state">FAILED TO LOAD PROVENANCE</div>';
   }
 }
 

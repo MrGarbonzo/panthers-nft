@@ -23,6 +23,7 @@
     "@x402/fetch": "^2.10.0",
     "@x402/svm": "^2.10.0",
     "bs58": "^6.0.0",
+    "code-provenance": "^0.1.13",
     "openai": "^6.34.0",
     "secretvm-verify": "^0.8.4",
     "technicalindicators": "^3.1.0",
