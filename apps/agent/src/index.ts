@@ -41,15 +41,14 @@ async function main(): Promise<void> {
   const storageBackend = process.env.STORAGE_BACKEND ?? 'simple';
 
   let backend: StorageBackend;
+  let vaultKeyManager: import('@idiostasis/core').VaultKeyManager | null = null;
   if (storageBackend === 'idiostasis') {
-    const vaultKeyHex = process.env.VAULT_KEY_HEX;
-    if (!vaultKeyHex) {
-      throw new Error('VAULT_KEY_HEX required when STORAGE_BACKEND=idiostasis');
-    }
-    const vaultKey = new Uint8Array(Buffer.from(vaultKeyHex, 'hex'));
+    const { VaultKeyManager } = await import('@idiostasis/core');
+    vaultKeyManager = await VaultKeyManager.load();
+    const vaultKey = vaultKeyManager.getKey();
     const { IdiostasisStorageBackend } = await import('./db/idiostasis-backend.js');
     backend = new IdiostasisStorageBackend(dbPath, vaultKey);
-    console.log('Storage backend: Idiostasis (ProtocolDatabase)');
+    console.log(`Storage backend: Idiostasis (first boot: ${vaultKeyManager.isFirstBoot()})`);
   } else {
     const { SimpleStorageBackend } = await import('./db/simple-backend.js');
     backend = new SimpleStorageBackend(dbPath);
@@ -138,10 +137,12 @@ async function main(): Promise<void> {
 
   // ERC-8004 registration
   try {
-    const agentHost = process.env.AGENT_HOST;
-    if (!agentHost) {
-      console.log('[registry] AGENT_HOST not set — skipping ERC-8004 registration');
+    const { resolveSecretvmDomain } = await import('@idiostasis/core');
+    const agentHost = await resolveSecretvmDomain();
+    if (!agentHost || agentHost === 'localhost') {
+      console.log(`[registry] Domain is '${agentHost}' — skipping ERC-8004 registration`);
     } else {
+      console.log(`[registry] Resolved domain: ${agentHost}`);
       const { ERC8004Client, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA } = await import('@idiostasis/erc8004-client');
       const baseRpcUrl = process.env.BASE_RPC_URL ?? 'https://sepolia.base.org';
       const port = process.env.PORT ?? '3000';
@@ -715,6 +716,16 @@ async function main(): Promise<void> {
         console.error('[secretvm] Balance check failed:', err);
       }
     }, 30 * 60 * 1000);
+  }
+
+  // Seal vault key after all initialization
+  if (vaultKeyManager) {
+    try {
+      await vaultKeyManager.seal();
+      console.log('[vault] Vault key sealed');
+    } catch (err) {
+      console.error('[vault] Failed to seal vault key:', err);
+    }
   }
 
   console.log('Panthers agent initialized');
