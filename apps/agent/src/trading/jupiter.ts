@@ -25,12 +25,17 @@ export interface QuoteParams {
 
 export class JupiterClient {
   private readonly api: SwapApi;
+  private readonly swapConnection: Connection;
 
   constructor(
     private readonly connection: Connection,
     private readonly agentKeypair: Keypair,
+    swapRpcUrl?: string,
   ) {
     this.api = createJupiterApiClient();
+    this.swapConnection = swapRpcUrl
+      ? new Connection(swapRpcUrl, 'confirmed')
+      : connection;
   }
 
   async getQuote(
@@ -85,12 +90,12 @@ export class JupiterClient {
     const txBuf = Buffer.from(swap.swapTransaction, 'base64');
     const tx = VersionedTransaction.deserialize(txBuf);
     tx.sign([this.agentKeypair]);
-    const signature = await this.connection.sendRawTransaction(tx.serialize(), {
+    const signature = await this.swapConnection.sendRawTransaction(tx.serialize(), {
       skipPreflight: false,
       maxRetries: 3,
     });
-    const latest = await this.connection.getLatestBlockhash('confirmed');
-    await this.connection.confirmTransaction(
+    const latest = await this.swapConnection.getLatestBlockhash('confirmed');
+    await this.swapConnection.confirmTransaction(
       {
         signature,
         blockhash: latest.blockhash,

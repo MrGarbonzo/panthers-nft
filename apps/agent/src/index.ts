@@ -585,7 +585,8 @@ async function main(): Promise<void> {
     paymentRpcUrl: birdeyePaymentRpc,
     onSpend: (amount) => void onBirdeyeSpend(amount),
   });
-  const jupiter = new JupiterClient(connection, keypair);
+  const jupiterSwapRpc = process.env.JUPITER_RPC_URL ?? 'https://api.mainnet-beta.solana.com';
+  const jupiter = new JupiterClient(connection, keypair, jupiterSwapRpc);
   const xApiKey = db.config.get(CONFIG.X_API_KEY, { envKey: 'X_API_KEY' });
   const xApiSecret = db.config.get(CONFIG.X_API_SECRET, { envKey: 'X_API_SECRET' });
   const xAccessToken = db.config.get(CONFIG.X_ACCESS_TOKEN, { envKey: 'X_ACCESS_TOKEN' });
