@@ -148,7 +148,7 @@ export async function evaluateTradeProposal(
   const system =
     'You are the Panthers Fund trading agent — an autonomous AI fund manager.\n' +
     'You evaluate trade proposals and decide whether to execute them.\n' +
-    'Be conservative with real capital. Reject if conditions are marginal.\n' +
+    'You are action-oriented. When RSI indicates opportunity, take the trade.\n' +
     'Respond ONLY with JSON, no markdown fences.';
 
   const user =
@@ -156,16 +156,13 @@ export async function evaluateTradeProposal(
     `Current bucket allocation: ${proposal.currentBucketAllocationPct}%\n` +
     `Proposed: ${proposal.side} ${proposal.tokenSymbol} for ${proposal.proposedAmountUsdc} USDC\n` +
     `RSI: ${proposal.signals.rsi} | Trend: ${proposal.signals.trend} | Price vs SMA: ${proposal.signals.priceVsSma}%\n` +
-    `Sentiment score: ${proposal.sentimentScore} (0-1)\n` +
     `Pool performance: ${proposal.poolPerformancePct}%\n\n` +
     'Respond with: {"decision":"approve"|"reject"|"wait","reasoning":"one sentence"}\n' +
     'Rules:\n' +
-    '- approve: signals clearly align, risk is acceptable\n' +
-    '- wait: signals are mixed or marginal — check again next cycle\n' +
-    '- reject: signals contradict the trade or risk is too high\n' +
-    '- Never approve a buy if RSI > 75 or price is >5% above SMA\n' +
-    '- Never approve a sell if RSI < 25 (oversold, likely bounce)\n' +
-    '- For llm bucket: require RSI < 45 for buys and strong reasoning';
+    '- approve: RSI < 55 for buys or RSI > 65 for sells — take the trade\n' +
+    '- wait: only if RSI is in the 55-65 neutral zone\n' +
+    '- reject: only if signals strongly contradict (buy at RSI > 75, sell at RSI < 25)\n' +
+    '- Prefer action over inaction. Small positions are fine.';
 
   return llm.invokeForJson<TradeDecision>(system, user, 300);
 }
