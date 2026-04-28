@@ -135,32 +135,36 @@ async function main(): Promise<void> {
   });
   publicServer.start();
 
+  // Resolve VM domain (auto-discovers from TLS cert in TEE)
+  const { resolveSecretvmDomain } = await import('@idiostasis/core');
+  const agentDomain = await resolveSecretvmDomain();
+  console.log(`[boot] Resolved domain: ${agentDomain}`);
+
   // ERC-8004 registration
   try {
-    const { resolveSecretvmDomain } = await import('@idiostasis/core');
-    const agentHost = await resolveSecretvmDomain();
-    if (!agentHost || agentHost === 'localhost') {
-      console.log(`[registry] Domain is '${agentHost}' — skipping ERC-8004 registration`);
+    if (!agentDomain || agentDomain === 'localhost') {
+      console.log(`[registry] Domain is '${agentDomain}' — skipping ERC-8004 registration`);
     } else {
-      console.log(`[registry] Resolved domain: ${agentHost}`);
+      const { mnemonicToAccount } = await import('viem/accounts');
+      const evmAccount = mnemonicToAccount(evmWallet.mnemonic);
       const { ERC8004Client, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA } = await import('@idiostasis/erc8004-client');
       const baseRpcUrl = process.env.BASE_RPC_URL ?? 'https://sepolia.base.org';
-      const port = process.env.PORT ?? '3000';
-      const wallet = { address: evmWallet.address, account: { address: evmWallet.address }, signTransaction: async () => '' };
+      const port = process.env.PORT ?? '8080';
+      const wallet = { address: evmAccount.address, account: evmAccount, signTransaction: async () => '' };
       const registry = new ERC8004Client(baseRpcUrl, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA, 'base-sepolia');
       const existingTokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
       if (!existingTokenId) {
         const result = await registry.register({
           name: 'Panthers Fund',
           description: 'Autonomous AI NFT fund on Solana',
-          services: [{ name: 'dashboard', endpoint: `http://${agentHost}:${port}` }],
+          services: [{ name: 'dashboard', endpoint: `http://${agentDomain}:${port}` }],
           wallet,
         });
         db.config.set(CONFIG.ERC8004_TOKEN_ID, result.tokenId.toString());
         console.log(`[registry] registered, token ID: ${result.tokenId}`);
       } else {
         const tokenId = Number(existingTokenId);
-        await registry.updateEndpoint(tokenId, 'dashboard', `http://${agentHost}:${port}`, wallet);
+        await registry.updateEndpoint(tokenId, 'dashboard', `http://${agentDomain}:${port}`, wallet);
         console.log(`[registry] endpoint updated, token ID: ${existingTokenId}`);
       }
     }
@@ -194,7 +198,7 @@ async function main(): Promise<void> {
 
   // TEE Attestation — verify this VM at boot
   try {
-    const vmDomain = db.config.get(CONFIG.SECRETVM_DOMAIN, { envKey: 'SECRETVM_DOMAIN' });
+    const vmDomain = agentDomain !== 'localhost' ? agentDomain : null;
     if (vmDomain) {
       const { checkSecretVm } = await import('secretvm-verify');
       console.log(`[attestation] Verifying ${vmDomain}...`);
@@ -221,7 +225,7 @@ async function main(): Promise<void> {
 
   // Code provenance — link running images to Git commits
   try {
-    const vmDomain = db.config.get(CONFIG.SECRETVM_DOMAIN, { envKey: 'SECRETVM_DOMAIN' });
+    const vmDomain = agentDomain !== 'localhost' ? agentDomain : null;
     if (vmDomain) {
       const { parseCompose, parseImageRef, resolveImage } = await import('code-provenance');
       console.log('[provenance] Resolving image provenance...');
