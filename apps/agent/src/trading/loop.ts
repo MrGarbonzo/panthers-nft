@@ -145,21 +145,34 @@ export class TradingLoop {
 
     let side: 'buy' | 'sell' | null = null;
     if (
-      signals.rsi < 35 &&
+      signals.rsi < 55 &&
       signals.trend !== 'down' &&
-      sentiment > 0.4 &&
-      corePct < CORE_TARGET_PCT + 0.05
+      corePct < CORE_TARGET_PCT + 0.10
     ) {
       side = 'buy';
     } else if (
-      (signals.rsi > 70 || (signals.trend === 'down' && sentiment < 0.3)) &&
-      corePct > CORE_TARGET_PCT - 0.05
+      (signals.rsi > 65 || signals.trend === 'down') &&
+      corePct > CORE_TARGET_PCT - 0.10
     ) {
       side = 'sell';
     }
 
     if (!side) {
-      console.log('Core: no signal this cycle');
+      console.log(`Core: no signal (RSI=${signals.rsi.toFixed(0)} trend=${signals.trend})`);
+      state = appendTradingDecision(state, {
+        bucket: 'core',
+        side: 'buy',
+        tokenSymbol: 'SOL',
+        tokenMint: SOL_MINT,
+        proposedAmountUsdc: 0,
+        decision: 'wait',
+        reasoning: `No signal. RSI=${signals.rsi.toFixed(0)}, trend=${signals.trend}`,
+        rsi: signals.rsi,
+        trend: signals.trend,
+        executed: false,
+        paperTrade: !!this.params.paperTrading,
+      });
+      await this.params.db.saveState(state, this.params.adapter, this.params.cacheWriter);
       return state;
     }
 
