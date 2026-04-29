@@ -60,8 +60,7 @@ async function main(): Promise<void> {
 
   const solanaRpcUrl = db.config.get(CONFIG.SOLANA_RPC_URL, {
     envKey: 'SOLANA_RPC_URL',
-    required: true,
-  })!;
+  });
 
   const publicCachePath = db.config.get(CONFIG.PUBLIC_CACHE_PATH, {
     envKey: 'PUBLIC_CACHE_PATH',
@@ -88,8 +87,26 @@ async function main(): Promise<void> {
     console.error('Initial cache write failed:', err),
   );
   const keypair = initializeSolanaWallet(db);
-  const umi = initializeUmi(keypair, solanaRpcUrl);
-  const connection = new Connection(solanaRpcUrl, 'confirmed');
+
+  let connection: Connection;
+  let effectiveRpcUrl: string;
+  let effectiveWsUrl: string | undefined;
+
+  if (solanaRpcUrl) {
+    connection = new Connection(solanaRpcUrl, 'confirmed');
+    effectiveRpcUrl = solanaRpcUrl;
+    console.log('Solana RPC: Helius (API key)');
+  } else {
+    const { createX402Connection } = await import('./solana/x402-connection.js');
+    const solNetwork = (process.env.SOLANA_NETWORK ?? 'solana-devnet') as 'solana-devnet' | 'solana-mainnet';
+    const x402Result = await createX402Connection(keypair, solNetwork);
+    connection = x402Result.connection;
+    effectiveRpcUrl = `https://x402.quicknode.com/${solNetwork}`;
+    effectiveWsUrl = x402Result.wsUrl;
+    console.log(`Solana RPC: QuickNode x402 (${solNetwork})`);
+  }
+
+  const umi = initializeUmi(keypair, effectiveRpcUrl);
 
   console.log(`Solana public key: ${keypair.publicKey.toBase58()}`);
   console.log(
@@ -548,11 +565,14 @@ async function main(): Promise<void> {
 
   publicServer.setLlmDependencies(llmRouter, personaCtx);
 
-  if (isHeliusUrl(solanaRpcUrl)) {
-    const wsUrl = deriveWsUrl(solanaRpcUrl);
+  const wsUrl = solanaRpcUrl && isHeliusUrl(solanaRpcUrl)
+    ? deriveWsUrl(solanaRpcUrl)
+    : effectiveWsUrl;
+
+  if (wsUrl) {
     const monitor = new UsdcMonitor({
       wsUrl,
-      rpcUrl: solanaRpcUrl,
+      rpcUrl: effectiveRpcUrl,
       agentWallet: keypair.publicKey.toBase58(),
       usdcMint,
       onInboundTransfer: async (transfer: InboundTransfer) => {
@@ -665,7 +685,7 @@ async function main(): Promise<void> {
               db,
               adapter,
               umi,
-              rpcUrl: solanaRpcUrl,
+              rpcUrl: effectiveRpcUrl,
               saleId: match.saleId,
               confirmedAmountUsdc: transfer.amountUsdc,
               txSignature: transfer.txSignature,
@@ -687,11 +707,11 @@ async function main(): Promise<void> {
     monitor.start();
     console.log(`[Boot] USDC monitor started (ws: ${wsUrl.split('?')[0]}...)`);
   } else {
-    console.log('[Boot] USDC monitor skipped — non-Helius RPC URL');
+    console.log('[Boot] USDC monitor skipped — no WebSocket URL available');
   }
 
   const nftMonitor = new NftMonitor({
-    rpcUrl: solanaRpcUrl,
+    rpcUrl: effectiveRpcUrl,
     agentWallet: keypair.publicKey.toBase58(),
     onInboundNft: async ({ mintAddress, fromWallet, txSignature }) => {
       const currentState = await db.loadState(adapter);
