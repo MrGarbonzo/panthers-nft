@@ -17,7 +17,6 @@ export async function createX402Connection(
 ): Promise<X402ConnectionResult> {
   const { createQuicknodeX402Client } = await import('@quicknode/x402');
 
-  // Pay on Base Sepolia with EVM wallet
   const paymentNetwork = 'eip155:84532';
   const hexKey = (evmPrivateKey.startsWith('0x') ? evmPrivateKey : `0x${evmPrivateKey}`) as `0x${string}`;
 
@@ -31,9 +30,16 @@ export async function createX402Connection(
 
   const rpcUrl = `${QN_BASE_URL}/${network}`;
 
+  // Wrap client.fetch to work with @solana/web3.js Connection
+  // Connection calls fetch(url, options) but the x402 client needs to intercept 402 responses
+  const x402Fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    return client.fetch(url, init);
+  };
+
   const connection = new Connection(rpcUrl, {
     commitment: 'confirmed',
-    fetch: client.fetch as any,
+    fetch: x402Fetch as any,
   });
 
   const wsUrl = rpcUrl.replace('https://', 'wss://');
