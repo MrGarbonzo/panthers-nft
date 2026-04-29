@@ -88,6 +88,10 @@ async function main(): Promise<void> {
   );
   const keypair = initializeSolanaWallet(db);
 
+  // EVM wallet — generated on first boot, stored in DB
+  const { initializeEvmWallet } = await import('./wallet/evm-wallet.js');
+  const evmWallet = initializeEvmWallet(db);
+
   let connection: Connection;
   let effectiveRpcUrl: string;
   let effectiveWsUrl: string | undefined;
@@ -98,8 +102,10 @@ async function main(): Promise<void> {
     console.log('Solana RPC: Helius (API key)');
   } else {
     const { createX402Connection } = await import('./solana/x402-connection.js');
+    const { mnemonicToAccount: mta } = await import('viem/accounts');
+    const evmPrivKeyHex = Buffer.from(mta(evmWallet.mnemonic).getHdKey().privateKey!).toString('hex');
     const solNetwork = (process.env.SOLANA_NETWORK ?? 'solana-devnet') as 'solana-devnet' | 'solana-mainnet';
-    const x402Result = await createX402Connection(keypair, solNetwork);
+    const x402Result = await createX402Connection(evmPrivKeyHex, solNetwork);
     connection = x402Result.connection;
     effectiveRpcUrl = `https://x402.quicknode.com/${solNetwork}`;
     effectiveWsUrl = x402Result.wsUrl;
@@ -132,10 +138,6 @@ async function main(): Promise<void> {
       console.log(`[Boot] Cleaned up ${expired.length} expired pending sale(s)`);
     }
   }
-
-  // EVM wallet — generated on first boot, stored in DB
-  const { initializeEvmWallet } = await import('./wallet/evm-wallet.js');
-  const evmWallet = initializeEvmWallet(db);
 
   const publicServer = new PublicBalanceServer({
     cacheWriter,
