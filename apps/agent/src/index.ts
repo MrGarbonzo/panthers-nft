@@ -157,15 +157,21 @@ async function main(): Promise<void> {
         const result = await registry.register({
           name: 'Panthers Fund',
           description: 'Autonomous AI NFT fund on Solana',
-          services: [{ name: 'dashboard', endpoint: `http://${agentDomain}:${port}` }],
+          services: [
+            { name: 'discovery', endpoint: `http://${agentDomain}:3001/discover` },
+            { name: 'dashboard', endpoint: `http://${agentDomain}:${port}` },
+          ],
           wallet,
         });
         db.config.set(CONFIG.ERC8004_TOKEN_ID, result.tokenId.toString());
         console.log(`[registry] registered, token ID: ${result.tokenId}`);
       } else {
         const tokenId = Number(existingTokenId);
-        await registry.updateEndpoint(tokenId, 'dashboard', `http://${agentDomain}:${port}`, wallet);
-        console.log(`[registry] endpoint updated, token ID: ${existingTokenId}`);
+        await registry.updateAllEndpoints(tokenId, [
+          { name: 'discovery', endpoint: `http://${agentDomain}:3001/discover` },
+          { name: 'dashboard', endpoint: `http://${agentDomain}:${port}` },
+        ], wallet);
+        console.log(`[registry] endpoints updated, token ID: ${existingTokenId}`);
       }
     }
   } catch (err) {
@@ -276,6 +282,147 @@ async function main(): Promise<void> {
     }
   } catch (err) {
     console.error('[provenance] Resolution failed (non-fatal):', err);
+  }
+
+  // Idiostasis protocol server (admission, heartbeat, snapshots)
+  if (storageBackend === 'idiostasis' && vaultKeyManager) {
+    try {
+      const {
+        resolveTeeInstanceId,
+        AdmissionService,
+        HeartbeatManager,
+        SnapshotManager,
+        SecretLabsAttestationProvider,
+      } = await import('@idiostasis/core');
+      const { createHash, randomBytes } = await import('node:crypto');
+      const { generateKeyPairSync, sign: edSign } = await import('node:crypto');
+      const { IdiostasisStorageBackend } = await import('./db/idiostasis-backend.js');
+      const protocolDb = (backend as InstanceType<typeof IdiostasisStorageBackend>).db;
+      const vaultKey = vaultKeyManager.getKey();
+
+      const teeInstanceId = await resolveTeeInstanceId();
+      // Dev signer — production uses TEE signing service
+      const devKeyPair = generateKeyPairSync('ed25519');
+      const signer = async (data: Uint8Array): Promise<Uint8Array> => {
+        return new Uint8Array(edSign(null, Buffer.from(data), devKeyPair.privateKey));
+      };
+
+      // Self-attest RTMR3
+      let agentRtmr3 = protocolDb.getConfig('agent_rtmr3') ?? 'dev-measurement';
+      try {
+        const provider = new SecretLabsAttestationProvider();
+        const quote = await provider.fetchQuote('172.17.0.1');
+        const result = await provider.verifyQuote(quote);
+        agentRtmr3 = result.rtmr3;
+        console.log(`[protocol] Self-attested RTMR3: ${agentRtmr3.slice(0, 16)}...`);
+      } catch {
+        console.log('[protocol] Self-attestation failed, using fallback RTMR3');
+      }
+
+      const guardianRtmr3 = (process.env.GUARDIAN_APPROVED_RTMR3 ?? '')
+        .split(',').map(s => s.trim()).filter(Boolean);
+
+      const snapshotManager = new SnapshotManager(protocolDb, vaultKey, teeInstanceId);
+      const attestationProvider = new SecretLabsAttestationProvider();
+
+      const protocolConfig = {
+        agentApprovedRtmr3: [agentRtmr3],
+        guardianApprovedRtmr3: guardianRtmr3,
+        heartbeatIntervalMs: 30000,
+        livenessFailureThreshold: 6,
+        reAttestationIntervalHours: 6,
+        dbSnapshotIntervalMs: 600000,
+        peerStalenessThresholdMs: 300000,
+        minGuardianCount: 2,
+        backupJitterMaxMs: 15000,
+        reAttestFailureLimit: 2,
+        pccsEndpoints: ['https://pccs.scrtlabs.com/dcap-tools/quote-parse'],
+      };
+
+      const admissionService = new AdmissionService(
+        protocolDb,
+        protocolConfig as any,
+        vaultKey,
+        snapshotManager,
+        signer,
+        attestationProvider,
+      );
+
+      const heartbeatManager = new HeartbeatManager(
+        { heartbeatIntervalMs: 30000, livenessFailureThreshold: 6 } as any,
+        protocolDb,
+        'primary',
+      );
+
+      const { HttpServer: ProtocolHttpServer } = await import('./protocol/server.js');
+      const protocolServer = new ProtocolHttpServer({
+        stateAdapter: adapter as any,
+        healthAdapter: { check: async () => ({ healthy: true, severity: 'ok' as const }) },
+        teeInstanceId,
+        role: 'primary',
+        startTime: Date.now(),
+        admissionService,
+        heartbeatManager,
+        db: protocolDb,
+        agentRtmr3,
+        evmAddress: evmWallet.address,
+        vaultKeyManager,
+        signer,
+        domain: agentDomain,
+        snapshotManager,
+        onAdmissionComplete: () => {
+          console.log('[protocol] Guardian admitted — pushing snapshot');
+        },
+      });
+
+      const protocolPort = Number(process.env.PROTOCOL_PORT ?? '3001');
+      await protocolServer.start(protocolPort);
+      console.log(`[protocol] Protocol server listening on :${protocolPort}`);
+
+      // Start heartbeat
+      const pingTransport = async (target: string, envelope: any): Promise<boolean> => {
+        const url = target.startsWith('http') ? `${target}/ping` : `http://${target}/ping`;
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(envelope),
+          });
+          return res.ok;
+        } catch { return false; }
+      };
+      heartbeatManager.start({
+        transport: pingTransport,
+        signer,
+        teeInstanceId,
+      });
+
+      // Periodic snapshot push
+      setInterval(async () => {
+        try {
+          const guardians = protocolDb.listGuardians('active');
+          if (guardians.length === 0) return;
+          const snapshot = await snapshotManager.createSnapshot(signer);
+          for (const g of guardians) {
+            const url = g.networkAddress.startsWith('http')
+              ? `${g.networkAddress}/recovery`
+              : `http://${g.networkAddress}/recovery`;
+            try {
+              await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ snapshot }),
+              });
+            } catch {}
+          }
+        } catch (err) {
+          console.error('[protocol] Snapshot push failed:', err);
+        }
+      }, 5 * 60 * 1000);
+
+    } catch (err) {
+      console.error('[protocol] Protocol server failed to start (non-fatal):', err);
+    }
   }
 
   if (devMode) {

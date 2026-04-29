@@ -24,6 +24,7 @@
     "@x402/svm": "^2.10.0",
     "bs58": "^6.0.0",
     "code-provenance": "^0.1.13",
+    "express": "^4.22.1",
     "openai": "^6.34.0",
     "secretvm-verify": "^0.8.4",
     "technicalindicators": "^3.1.0",
@@ -33,6 +34,7 @@
     "viem": "^2.48.4"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
     "@types/uuid": "^10.0.0",
     "typescript": "^5.8.0"

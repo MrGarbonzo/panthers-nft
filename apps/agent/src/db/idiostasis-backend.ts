@@ -2,7 +2,7 @@ import { ProtocolDatabase } from '@idiostasis/core';
 import type { StorageBackend } from './storage-backend.js';
 
 export class IdiostasisStorageBackend implements StorageBackend {
-  private readonly db: ProtocolDatabase;
+  public readonly db: ProtocolDatabase;
 
   constructor(dbPath: string, vaultKey: Uint8Array) {
     this.db = new ProtocolDatabase(dbPath, vaultKey);
