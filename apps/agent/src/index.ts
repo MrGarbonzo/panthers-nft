@@ -101,15 +101,23 @@ async function main(): Promise<void> {
     effectiveRpcUrl = solanaRpcUrl;
     console.log('Solana RPC: Helius (API key)');
   } else {
-    const { createX402Connection } = await import('./solana/x402-connection.js');
-    const { mnemonicToAccount: mta } = await import('viem/accounts');
-    const evmPrivKeyHex = Buffer.from(mta(evmWallet.mnemonic).getHdKey().privateKey!).toString('hex');
-    const solNetwork = (process.env.SOLANA_NETWORK ?? 'solana-devnet') as 'solana-devnet' | 'solana-mainnet';
-    const x402Result = await createX402Connection(evmPrivKeyHex, solNetwork);
-    connection = x402Result.connection;
-    effectiveRpcUrl = `https://x402.quicknode.com/${solNetwork}`;
-    effectiveWsUrl = x402Result.wsUrl;
-    console.log(`Solana RPC: QuickNode x402 (${solNetwork})`);
+    try {
+      const { createX402Connection } = await import('./solana/x402-connection.js');
+      const { mnemonicToAccount: mta } = await import('viem/accounts');
+      const evmPrivKeyHex = Buffer.from(mta(evmWallet.mnemonic).getHdKey().privateKey!).toString('hex');
+      const solNetwork = (process.env.SOLANA_NETWORK ?? 'solana-devnet') as 'solana-devnet' | 'solana-mainnet';
+      const x402Result = await createX402Connection(evmPrivKeyHex, solNetwork);
+      connection = x402Result.connection;
+      effectiveRpcUrl = `https://x402.quicknode.com/${solNetwork}`;
+      effectiveWsUrl = x402Result.wsUrl;
+      console.log(`Solana RPC: QuickNode x402 (${solNetwork})`);
+    } catch (x402Err) {
+      console.warn(`[x402-rpc] Failed to initialize QuickNode x402: ${x402Err}`);
+      const fallbackUrl = 'https://api.devnet.solana.com';
+      connection = new Connection(fallbackUrl, 'confirmed');
+      effectiveRpcUrl = fallbackUrl;
+      console.log('Solana RPC: public devnet (fallback)');
+    }
   }
 
   const umi = initializeUmi(keypair, effectiveRpcUrl);
