@@ -420,6 +420,74 @@ async function main(): Promise<void> {
         }
       }, 5 * 60 * 1000);
 
+      // Auto-provision guardians
+      if (secretVmClient) {
+        const erc8004TokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
+
+        // Fetch guardian compose template and inject token ID
+        if (!protocolDb.getConfig('guardian_compose') && erc8004TokenId) {
+          try {
+            const composeUrl = process.env.GUARDIAN_COMPOSE_URL
+              ?? 'https://raw.githubusercontent.com/MrGarbonzo/idiostasis-protocol/main/docker/docker-compose.secretvm-guardian.yml';
+            const composeRes = await fetch(composeUrl, { signal: AbortSignal.timeout(15_000) });
+            if (composeRes.ok) {
+              const yaml = await composeRes.text();
+              const customized = yaml.replace(/ERC8004_TOKEN_ID=\d+/, `ERC8004_TOKEN_ID=${erc8004TokenId}`);
+              protocolDb.setConfig('guardian_compose', customized);
+              console.log(`[protocol] Guardian compose fetched and customized with token ID ${erc8004TokenId}`);
+            }
+          } catch (err) {
+            console.error('[protocol] Failed to fetch guardian compose:', err);
+          }
+        }
+
+        // Bootstrap backup_rtmr3 so AutonomousGuardianManager.evaluate() doesn't skip
+        if (!protocolDb.getConfig('backup_rtmr3')) {
+          protocolDb.setConfig('backup_rtmr3', agentRtmr3);
+        }
+
+        // Build guardian VM client adapter
+        const svm = secretVmClient;
+        const guardianVmClient = {
+          createVm: async (params: { name: string; dockerCompose: Uint8Array }) => {
+            const result = await svm.createVm({
+              name: params.name,
+              vmTypeId: 'small',
+              dockerComposeYaml: new TextDecoder().decode(params.dockerCompose),
+              fsPersistence: true,
+            });
+            return { vmId: (result as any).id ?? (result as any).vmId, domain: (result as any).vmDomain ?? '' };
+          },
+          getVmStatus: async (vmId: string) => {
+            const s = await svm.getVmStatus(vmId);
+            return { status: s.status };
+          },
+          stopVm: async (vmId: string) => { await svm.stopVm(vmId); },
+        };
+
+        const { AutonomousGuardianManager } = await import('@idiostasis/guardian');
+        const guardianManager = new AutonomousGuardianManager(
+          protocolDb, protocolConfig as any, guardianVmClient,
+        );
+
+        // 15 min: first guardian check
+        setTimeout(() => {
+          console.log('[protocol] Auto-provision check: 15 min elapsed');
+          void guardianManager.evaluate().catch(e => console.error('[protocol] Guardian eval failed:', e));
+        }, 15 * 60 * 1000);
+
+        // 30 min: second guardian check + start regular loop
+        setTimeout(() => {
+          console.log('[protocol] Auto-provision check: 30 min elapsed');
+          void guardianManager.evaluate().catch(e => console.error('[protocol] Guardian eval failed:', e));
+          setInterval(() => {
+            void guardianManager.evaluate().catch(e => console.error('[protocol] Guardian eval failed:', e));
+          }, 60_000);
+        }, 30 * 60 * 1000);
+
+        console.log('[protocol] Guardian auto-provisioning armed (15 min / 30 min)');
+      }
+
     } catch (err) {
       console.error('[protocol] Protocol server failed to start (non-fatal):', err);
     }
