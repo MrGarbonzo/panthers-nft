@@ -575,9 +575,8 @@ async function main(): Promise<void> {
 
   publicServer.setLlmDependencies(llmRouter, personaCtx);
 
-  const wsUrl = solanaRpcUrl && isHeliusUrl(solanaRpcUrl)
-    ? deriveWsUrl(solanaRpcUrl)
-    : effectiveWsUrl;
+  const wsUrl = effectiveWsUrl
+    ?? (effectiveRpcUrl.startsWith('https://') || effectiveRpcUrl.startsWith('http://') ? deriveWsUrl(effectiveRpcUrl) : undefined);
 
   if (wsUrl) {
     const monitor = new UsdcMonitor({
