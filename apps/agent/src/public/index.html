@@ -883,20 +883,14 @@ async function connectWallet() {
     return false;
   }
   try {
+    // Revoke existing permissions first, then request fresh — forces account picker
+    try {
+      await window.ethereum.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] });
+    } catch {}
+    // Request fresh permissions — MetaMask shows account picker since we revoked
+    await window.ethereum.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    let selected = accounts[0];
-
-    // Let user override if MetaMask returns wrong account
-    const ok = confirm('Connected to: ' + selected + '\n\nIs this the correct wallet? Click Cancel to enter a different address.');
-    if (!ok) {
-      const manual = prompt('Paste your wallet address (0x...):');
-      if (manual && /^0x[0-9a-fA-F]{40}$/.test(manual.trim())) {
-        selected = manual.trim();
-      } else {
-        return false;
-      }
-    }
-    connectedWallet = selected;
+    connectedWallet = accounts[0];
     $('wallet-btn').textContent = truncAddr(connectedWallet);
     $('wallet-btn').classList.add('connected');
     updateMyNftsTabState();
@@ -1252,10 +1246,6 @@ function renderMyNfts() {
         <div class="stat-label">WALLET</div>
         <div class="stat-value" style="font-size:18px">${truncAddr(connectedWallet)}</div>
         <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:11px">${connectedWallet}</div>
-        <div style="margin-top:8px;display:flex;gap:4px;align-items:center">
-          <input type="text" id="manual-wallet" placeholder="Paste address to override" style="font-size:10px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:'Space Mono',monospace;width:180px">
-          <button class="action-btn small secondary" style="font-size:10px;padding:4px 10px" onclick="overrideWallet()">SET</button>
-        </div>
       </div>
     </div>
   `;
@@ -1439,15 +1429,6 @@ async function executeUsdcTransfer(data, statusEl) {
   const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
   const fromAddress = accounts[0];
   if (!fromAddress) throw new Error('No account available');
-
-  // Show the user which account MetaMask is using
-  const proceed = confirm(
-    'MetaMask will send from:\n' + fromAddress +
-    '\n\nAmount: ' + data.amountUsdc + ' USDC' +
-    '\nTo: ' + data.agentWallet +
-    '\n\nIs this the correct account?'
-  );
-  if (!proceed) throw new Error('Cancelled — wrong account. In MetaMask, click the connected site icon and switch which account is connected to this site.');
 
   // Check USDC balance before attempting transfer
   const balanceCall = await window.ethereum.request({
