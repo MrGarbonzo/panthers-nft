@@ -4,9 +4,7 @@ import {
   http,
   type PublicClient,
   type WalletClient,
-  type Account,
   type Chain,
-  type Transport,
 } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
 import { mnemonicToAccount } from 'viem/accounts';
@@ -23,66 +21,24 @@ const CHAINS: Record<string, Chain> = {
   'base-sepolia': baseSepolia,
 };
 
-const QN_ENDPOINTS: Record<string, string> = {
-  'base': 'https://x402.quicknode.com/base-mainnet',
-  'base-sepolia': 'https://x402.quicknode.com/base-sepolia',
-};
-
 const PUBLIC_ENDPOINTS: Record<string, string> = {
   'base': 'https://mainnet.base.org',
   'base-sepolia': 'https://sepolia.base.org',
 };
 
 /**
- * Create Base RPC clients.
- * If evmPrivateKey is provided, uses QuickNode x402 (pay-per-request).
- * Otherwise, falls back to free public endpoint.
+ * Create Base RPC clients using public endpoint.
+ * TODO: x402 QuickNode integration when @quicknode/x402 supports viem custom fetch
  */
 export async function createBaseRpcClients(
   mnemonic: string,
   network: 'base' | 'base-sepolia' = 'base-sepolia',
-  useX402 = true,
 ): Promise<BaseRpcClients> {
   const chain = CHAINS[network];
   const account = mnemonicToAccount(mnemonic);
 
-  let transport: Transport;
-
-  if (useX402) {
-    try {
-      const { createQuicknodeX402Client } = await import('@quicknode/x402');
-      const evmPrivKeyHex = Buffer.from(account.getHdKey().privateKey!).toString('hex');
-
-      const x402Client = await createQuicknodeX402Client({
-        baseUrl: 'https://x402.quicknode.com',
-        network: network === 'base' ? 'eip155:8453' : 'eip155:84532',
-        evmPrivateKey: `0x${evmPrivKeyHex}` as `0x${string}`,
-        paymentModel: 'credit-drawdown',
-        preAuth: true,
-      });
-
-      transport = http(QN_ENDPOINTS[network], {
-        fetchOptions: {},
-        onFetchRequest: async (request) => {
-          // Use x402 client's fetch for payment handling
-          return x402Client.fetch(request.url, {
-            method: request.method,
-            headers: Object.fromEntries(request.headers.entries()),
-            body: request.body ? await request.text() : undefined,
-          });
-        },
-      });
-
-      console.log(`[base-rpc] QuickNode x402 (${network})`);
-    } catch (err) {
-      console.warn(`[base-rpc] x402 failed, using public endpoint: ${err}`);
-      transport = http(PUBLIC_ENDPOINTS[network]);
-      console.log(`[base-rpc] Public endpoint (${network})`);
-    }
-  } else {
-    transport = http(PUBLIC_ENDPOINTS[network]);
-    console.log(`[base-rpc] Public endpoint (${network})`);
-  }
+  const transport = http(PUBLIC_ENDPOINTS[network]);
+  console.log(`[base-rpc] Public endpoint (${network})`);
 
   const publicClient = createPublicClient({ chain, transport });
 

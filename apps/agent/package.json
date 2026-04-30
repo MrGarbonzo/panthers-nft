@@ -13,7 +13,6 @@
     "@idiostasis/erc8004-client": "*",
     "@idiostasis/guardian": "*",
     "@idiostasis/x402-client": "*",
-    "@quicknode/x402": "^0.1.3",
     "code-provenance": "^0.1.13",
     "express": "^4.22.1",
     "openai": "^6.34.0",
