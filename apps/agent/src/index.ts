@@ -191,7 +191,25 @@ async function main(): Promise<void> {
     })!;
     secretVmClient = new SecretVmClient(evmWallet, x402, secretVmBaseUrl);
 
-    const balance = await secretVmClient.getBalance();
+    let balance: number;
+    try {
+      balance = await secretVmClient.getBalance();
+    } catch (balErr: any) {
+      if (String(balErr).includes('404')) {
+        // Account doesn't exist yet — create it by adding funds via x402
+        console.log('[secretvm] No account yet (404) — creating via add-funds...');
+        try {
+          await secretVmClient.addFunds(1); // $1 USDC initial deposit
+          balance = await secretVmClient.getBalance();
+          console.log(`[secretvm] Account created. Balance: ${balance} (${(balance / 1_000_000).toFixed(2)} USDC)`);
+        } catch (topupErr) {
+          console.error('[secretvm] Initial top-up failed (non-fatal):', topupErr);
+          balance = 0;
+        }
+      } else {
+        throw balErr;
+      }
+    }
     db.config.set(CONFIG.SECRETVM_BALANCE, String(balance));
     console.log(`[secretvm] Balance: ${balance} (${(balance / 1_000_000).toFixed(2)} USDC)`);
 
@@ -821,7 +839,19 @@ async function main(): Promise<void> {
     const svm = secretVmClient;
     setInterval(async () => {
       try {
-        const balance = await svm.getBalance();
+        let balance: number;
+        try {
+          balance = await svm.getBalance();
+        } catch (balErr: any) {
+          if (String(balErr).includes('404')) {
+            // Account not created yet — create via add-funds
+            console.log('[secretvm] No account (404) — creating via add-funds...');
+            await svm.addFunds(1);
+            balance = await svm.getBalance();
+          } else {
+            throw balErr;
+          }
+        }
         db.config.set(CONFIG.SECRETVM_BALANCE, String(balance));
         const usdcBalance = balance / 1_000_000;
         console.log(`[secretvm] Balance: ${usdcBalance.toFixed(2)} USDC`);
