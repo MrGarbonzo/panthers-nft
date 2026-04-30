@@ -1428,6 +1428,15 @@ async function executeUsdcTransfer(data, statusEl) {
   const fromAddress = accounts[0];
   if (!fromAddress) throw new Error('No account available');
 
+  // Show the user which account MetaMask is using
+  const proceed = confirm(
+    'MetaMask will send from:\n' + fromAddress +
+    '\n\nAmount: ' + data.amountUsdc + ' USDC' +
+    '\nTo: ' + data.agentWallet +
+    '\n\nIs this the correct account?'
+  );
+  if (!proceed) throw new Error('Cancelled — wrong account. In MetaMask, click the connected site icon and switch which account is connected to this site.');
+
   // Check USDC balance before attempting transfer
   const balanceCall = await window.ethereum.request({
     method: 'eth_call',
