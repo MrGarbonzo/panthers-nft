@@ -1424,27 +1424,31 @@ async function executeUsdcTransfer(data, statusEl) {
     throw new Error('MetaMask not found.');
   }
 
-  // Re-request accounts to ensure MetaMask returns the currently selected one
   const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
   const fromAddress = accounts[0];
   if (!fromAddress) throw new Error('No account available');
 
-  console.log('[buy] eth_requestAccounts returned:', accounts);
-  console.log('[buy] Using from address:', fromAddress);
-  console.log('[buy] connectedWallet was:', connectedWallet);
+  // Check USDC balance before attempting transfer
+  const balanceCall = await window.ethereum.request({
+    method: 'eth_call',
+    params: [{
+      to: data.usdcAddress,
+      data: '0x70a08231' + fromAddress.slice(2).toLowerCase().padStart(64, '0'),
+    }, 'latest'],
+  });
+  const balanceUsdc = parseInt(balanceCall, 16) / 1_000_000;
 
-  // Update connectedWallet in case it changed
-  if (fromAddress.toLowerCase() !== (connectedWallet || '').toLowerCase()) {
-    console.warn('[buy] Account mismatch! MetaMask active:', fromAddress, 'Dashboard connected:', connectedWallet);
-    connectedWallet = fromAddress;
-    $('wallet-btn').textContent = truncAddr(connectedWallet);
+  if (balanceUsdc < data.amountUsdc) {
+    throw new Error(
+      'Insufficient USDC. Wallet ' + fromAddress + ' has ' + balanceUsdc.toFixed(2) +
+      ' USDC but needs ' + data.amountUsdc + '. If this is the wrong account, switch your active account in MetaMask and refresh the page.'
+    );
   }
 
-  // Build the ERC-20 transfer calldata manually
+  // Build the ERC-20 transfer calldata
   const atomicAmount = BigInt(Math.round(data.amountUsdc * 1_000_000));
   const amountHex = atomicAmount.toString(16).padStart(64, '0');
   const toHex = data.agentWallet.slice(2).toLowerCase().padStart(64, '0');
-  // transfer(address,uint256) selector = 0xa9059cbb
   const txData = '0xa9059cbb' + toHex + amountHex;
 
   if (statusEl && statusEl.textContent) statusEl.textContent = 'APPROVE IN WALLET...';
@@ -1460,9 +1464,8 @@ async function executeUsdcTransfer(data, statusEl) {
 
   if (statusEl && statusEl.textContent) statusEl.textContent = 'CONFIRMING...';
 
-  // Wait for confirmation
   const provider = new ethers.BrowserProvider(window.ethereum);
-  const receipt = await provider.waitForTransaction(txHash);
+  await provider.waitForTransaction(txHash);
 
   return txHash;
 }
