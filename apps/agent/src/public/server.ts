@@ -479,6 +479,7 @@ export class PublicBalanceServer {
           error: 'pending_sale_exists',
           expiresAt: new Date(existing.expiresAt).toISOString(),
           agentWallet: this.evmWalletAddress,
+          usdcAddress: getUsdcAddress((this.params.db?.config.get(CONFIG.BASE_NETWORK, { defaultValue: 'base-sepolia' }) ?? 'base-sepolia') as 'base' | 'base-sepolia'),
           amountUsdc: existing.agreedPriceUsdc,
         },
       };
@@ -574,6 +575,7 @@ export class PublicBalanceServer {
           error: 'pending_sale_exists',
           expiresAt: new Date(existing.expiresAt).toISOString(),
           agentWallet: this.evmWalletAddress,
+          usdcAddress: getUsdcAddress((this.params.db?.config.get(CONFIG.BASE_NETWORK, { defaultValue: 'base-sepolia' }) ?? 'base-sepolia') as 'base' | 'base-sepolia'),
           amountUsdc: existing.agreedPriceUsdc,
         },
       };
@@ -885,6 +887,7 @@ export class PublicBalanceServer {
           error: 'pending_sale_exists',
           expiresAt: new Date(existing.expiresAt).toISOString(),
           agentWallet: this.evmWalletAddress,
+          usdcAddress: getUsdcAddress((this.params.db?.config.get(CONFIG.BASE_NETWORK, { defaultValue: 'base-sepolia' }) ?? 'base-sepolia') as 'base' | 'base-sepolia'),
           amountUsdc: existing.agreedPriceUsdc,
         },
       };

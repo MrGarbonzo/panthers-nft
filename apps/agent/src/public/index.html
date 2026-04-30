@@ -1438,7 +1438,24 @@ async function handleBuy() {
     const data = await res.json();
 
     if (res.status === 409) {
-      resultEl.innerHTML = '<div class="inline-msg info">You already have a pending purchase. Please wait for it to expire.</div>';
+      // Show payment details so user can complete the pending purchase
+      resultEl.innerHTML = `
+        <div class="payment-panel">
+          <div style="color:var(--orange);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;margin-bottom:8px">PENDING PURCHASE</div>
+          <div class="payment-row">
+            <span class="payment-label">AMOUNT</span>
+            <span class="payment-value">${data.amountUsdc ?? '1'} USDC</span>
+          </div>
+          <div class="payment-row">
+            <span class="payment-label">SEND TO</span>
+            <span class="payment-value" style="font-size:11px;font-family:'Space Mono',monospace">${data.agentWallet ?? ''}</span>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--muted)">
+            You have a pending purchase. Send USDC to complete it, or wait for it to expire (~30 min).
+          </div>
+          <button class="action-btn small" style="margin-top:12px" onclick="retryPendingBuy()">SEND USDC NOW</button>
+        </div>
+      `;
       btn.disabled = false;
       btn.textContent = 'BUY AT FIXED PRICE';
       return;
@@ -1450,15 +1467,73 @@ async function handleBuy() {
       return;
     }
 
+    // Store pending sale data so retryPendingBuy can use it
+    window._pendingBuyData = data;
+
     btn.textContent = 'APPROVE IN WALLET...';
-    const sig = await executeUsdcTransfer(data, btn);
-    resultEl.innerHTML = `<div class="inline-msg success">Payment sent. Your NFT share will be created shortly.<br><a href="https://sepolia.basescan.org/tx/${sig}" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
+    try {
+      const sig = await executeUsdcTransfer(data, btn);
+      resultEl.innerHTML = `<div class="inline-msg success">Payment sent. Your NFT share will be created shortly.<br><a href="https://sepolia.basescan.org/tx/${sig}" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
+      window._pendingBuyData = null;
+    } catch (txErr) {
+      console.error('Buy TX failed:', txErr);
+      // Show payment panel so user can retry the MetaMask transfer
+      resultEl.innerHTML = `
+        <div class="inline-msg error" style="margin-bottom:8px">${txErr.message || 'Transaction failed'}</div>
+        <div class="payment-panel">
+          <div style="color:var(--orange);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;margin-bottom:8px">COMPLETE YOUR PURCHASE</div>
+          <div class="payment-row">
+            <span class="payment-label">AMOUNT</span>
+            <span class="payment-value">${data.amountUsdc} USDC</span>
+          </div>
+          <div class="payment-row">
+            <span class="payment-label">SEND TO</span>
+            <span class="payment-value" style="font-size:11px;font-family:'Space Mono',monospace">${data.agentWallet}</span>
+          </div>
+          <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+            Click below to open MetaMask again, or send USDC manually.
+          </div>
+          <button class="action-btn small" style="margin-top:12px" onclick="retryPendingBuy()">RETRY SEND USDC</button>
+        </div>
+      `;
+    }
   } catch (e) {
-    console.error('Buy TX failed:', e);
-    resultEl.innerHTML = `<div class="inline-msg error">${e.message || 'Transaction failed'}</div>`;
+    console.error('Buy failed:', e);
+    resultEl.innerHTML = `<div class="inline-msg error">${e.message || 'Something went wrong'}</div>`;
   }
   btn.disabled = false;
   btn.textContent = 'BUY AT FIXED PRICE';
+}
+
+async function retryPendingBuy() {
+  const data = window._pendingBuyData;
+  const resultEl = $('buy-result');
+  if (!data) {
+    // No cached data — try to get it from the buy endpoint (will return 409 with details)
+    try {
+      const res = await fetch('/api/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: connectedWallet }),
+      });
+      const d = await res.json();
+      if (d.agentWallet && d.amountUsdc) {
+        window._pendingBuyData = d;
+        return retryPendingBuy();
+      }
+    } catch {}
+    resultEl.innerHTML = '<div class="inline-msg error">No pending purchase found. Try buying again.</div>';
+    return;
+  }
+  try {
+    resultEl.innerHTML = '<div style="color:var(--muted);font-size:13px">Opening MetaMask...</div>';
+    const sig = await executeUsdcTransfer(data, null);
+    resultEl.innerHTML = `<div class="inline-msg success">Payment sent. Your NFT share will be created shortly.<br><a href="https://sepolia.basescan.org/tx/${sig}" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
+    window._pendingBuyData = null;
+  } catch (e) {
+    resultEl.innerHTML = `<div class="inline-msg error">${e.message || 'Transaction failed'}</div>
+      <button class="action-btn small" style="margin-top:8px" onclick="retryPendingBuy()">RETRY</button>`;
+  }
 }
 
 async function handleOffer(overrideAmount) {
