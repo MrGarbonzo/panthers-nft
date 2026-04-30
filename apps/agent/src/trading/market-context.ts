@@ -129,7 +129,22 @@ export class MarketContext {
 
     // Try x402 Mycelia Signal first, fall back to CoinGecko
     if (this.params.x402Fetcher) {
-      coins = await this.fetchMyceliaSignal();
+      try {
+        coins = await this.fetchMyceliaSignal();
+        // If all prices are 0, x402 payment likely failed — try CoinGecko fallback
+        const hasData = Object.values(coins).some((c) => c.priceUsd > 0);
+        if (!hasData && this.params.coingeckoApiKey) {
+          console.warn('[market] Mycelia returned all zeros — falling back to CoinGecko');
+          coins = await this.fetchCoinGecko();
+        }
+      } catch (err) {
+        console.error('[market] Mycelia failed, trying CoinGecko fallback:', err);
+        if (this.params.coingeckoApiKey) {
+          coins = await this.fetchCoinGecko();
+        } else {
+          throw err;
+        }
+      }
     } else if (this.params.coingeckoApiKey) {
       coins = await this.fetchCoinGecko();
     } else {
@@ -164,8 +179,18 @@ export class MarketContext {
     const results = await Promise.allSettled(
       Object.entries(MYCELIA_PRICES).map(async ([coinId, url]) => {
         const res = await fetcher(url);
-        const data = (await res.json()) as { price?: string; pair?: string };
-        return { coinId, price: Number(data.price ?? 0) };
+        const text = await res.text();
+        let price = 0;
+        try {
+          const data = JSON.parse(text) as { price?: string; pair?: string };
+          price = Number(data.price ?? 0);
+        } catch {
+          console.error(`[market] Mycelia parse error for ${coinId}: ${text.slice(0, 200)}`);
+        }
+        if (price === 0) {
+          console.warn(`[market] Mycelia ${coinId}: price=0 (response: ${text.slice(0, 200)})`);
+        }
+        return { coinId, price };
       }),
     );
 
@@ -173,8 +198,10 @@ export class MarketContext {
       if (result.status === 'fulfilled') {
         out[result.value.coinId] = {
           priceUsd: result.value.price,
-          change24hPct: 0, // Mycelia doesn't provide 24h change
+          change24hPct: 0,
         };
+      } else {
+        console.error(`[market] Mycelia fetch failed:`, result.reason);
       }
     }
 

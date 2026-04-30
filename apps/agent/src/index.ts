@@ -757,7 +757,7 @@ async function main(): Promise<void> {
   if (x402Fetcher || coingeckoApiKey) {
     market = new MarketContext({
       x402Fetcher,
-      coingeckoApiKey: x402Fetcher ? undefined : (coingeckoApiKey ?? undefined),
+      coingeckoApiKey: coingeckoApiKey ?? undefined,
     });
     await market.start();
   } else {
