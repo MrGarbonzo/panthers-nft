@@ -1411,8 +1411,13 @@ async function executeUsdcTransfer(data, statusEl) {
   const fromAddress = accounts[0];
   if (!fromAddress) throw new Error('No account available');
 
+  console.log('[buy] eth_requestAccounts returned:', accounts);
+  console.log('[buy] Using from address:', fromAddress);
+  console.log('[buy] connectedWallet was:', connectedWallet);
+
   // Update connectedWallet in case it changed
   if (fromAddress.toLowerCase() !== (connectedWallet || '').toLowerCase()) {
+    console.warn('[buy] Account mismatch! MetaMask active:', fromAddress, 'Dashboard connected:', connectedWallet);
     connectedWallet = fromAddress;
     $('wallet-btn').textContent = truncAddr(connectedWallet);
   }
@@ -1492,6 +1497,10 @@ async function handleBuy() {
 
     // Store pending sale data so retryPendingBuy can use it
     window._pendingBuyData = data;
+
+    // Show which account will be used
+    const preCheckAccounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    resultEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Sending from: ${preCheckAccounts[0]}</div>`;
 
     btn.textContent = 'APPROVE IN WALLET...';
     try {
