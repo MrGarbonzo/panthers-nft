@@ -147,7 +147,7 @@ async function main(): Promise<void> {
       const existingTokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
       if (!existingTokenId) {
         const result = await registry.register({
-          name: 'Panthers Fund',
+          name: 'scrt panther test',
           description: 'Autonomous AI NFT fund on Base',
           services: [
             { name: 'discovery', endpoint: `http://${agentDomain}:3001/discover` },

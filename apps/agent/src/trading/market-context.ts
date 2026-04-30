@@ -2,9 +2,9 @@ import { TRADING_TOKENS } from './tokens.js';
 
 const DEFAULT_REFRESH_MS = 5 * 60 * 1000;
 
-// Deduplicate coingecko IDs from TRADING_TOKENS + base chain
+// Deduplicate coingecko IDs from TRADING_TOKENS
 const COINS: string[] = [
-  ...new Set([...TRADING_TOKENS.map((t) => t.coingeckoId), 'base']),
+  ...new Set(TRADING_TOKENS.map((t) => t.coingeckoId)),
 ];
 
 export interface CoinSnapshot {
