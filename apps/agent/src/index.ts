@@ -132,11 +132,13 @@ async function main(): Promise<void> {
   const agentDomain = await resolveSecretvmDomain();
   console.log(`[boot] Resolved domain: ${agentDomain}`);
 
-  // ERC-8004 registration
-  try {
-    if (!agentDomain || agentDomain === 'localhost') {
-      console.log(`[registry] Domain is '${agentDomain}' — skipping ERC-8004 registration`);
-    } else {
+  // ERC-8004 registration — fire-and-forget so it never blocks boot
+  void (async () => {
+    try {
+      if (!agentDomain || agentDomain === 'localhost') {
+        console.log(`[registry] Domain is '${agentDomain}' — skipping ERC-8004 registration`);
+        return;
+      }
       const { mnemonicToAccount } = await import('viem/accounts');
       const evmAccount = mnemonicToAccount(evmWallet.mnemonic);
       const { ERC8004Client, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA } = await import('@idiostasis/erc8004-client');
@@ -146,29 +148,35 @@ async function main(): Promise<void> {
       const registry = new ERC8004Client(baseRpcUrl, ERC8004_REGISTRY_ADDRESS_BASE_SEPOLIA, 'base-sepolia');
       const existingTokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
       if (!existingTokenId) {
-        const result = await registry.register({
-          name: 'scrt panther test',
-          description: 'Autonomous AI NFT fund on Base',
-          services: [
-            { name: 'discovery', endpoint: `http://${agentDomain}:3001/discover` },
-            { name: 'dashboard', endpoint: `http://${agentDomain}:${port}` },
-          ],
-          wallet,
-        });
+        const result = await Promise.race([
+          registry.register({
+            name: 'scrt panther test',
+            description: 'Autonomous AI NFT fund on Base',
+            services: [
+              { name: 'discovery', endpoint: `http://${agentDomain}:3001/discover` },
+              { name: 'dashboard', endpoint: `http://${agentDomain}:${port}` },
+            ],
+            wallet,
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 60_000)),
+        ]);
         db.config.set(CONFIG.ERC8004_TOKEN_ID, result.tokenId.toString());
         console.log(`[registry] registered, token ID: ${result.tokenId}`);
       } else {
         const tokenId = Number(existingTokenId);
-        await registry.updateAllEndpoints(tokenId, [
-          { name: 'discovery', endpoint: `http://${agentDomain}:3001/discover` },
-          { name: 'dashboard', endpoint: `http://${agentDomain}:${port}` },
-        ], wallet);
+        await Promise.race([
+          registry.updateAllEndpoints(tokenId, [
+            { name: 'discovery', endpoint: `http://${agentDomain}:3001/discover` },
+            { name: 'dashboard', endpoint: `http://${agentDomain}:${port}` },
+          ], wallet),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 30_000)),
+        ]);
         console.log(`[registry] endpoints updated, token ID: ${existingTokenId}`);
       }
+    } catch (err) {
+      console.error('[registry] ERC-8004 registration failed (non-fatal):', err);
     }
-  } catch (err) {
-    console.error('[registry] ERC-8004 registration failed (non-fatal):', err);
-  }
+  })();
 
   // SecretVM x402 client
   let secretVmClient: import('@idiostasis/x402-client').SecretVmClient | null = null;
@@ -194,13 +202,16 @@ async function main(): Promise<void> {
     console.error('[secretvm] initialization failed (non-fatal):', err);
   }
 
-  // TEE Attestation — verify this VM at boot
+  // TEE Attestation — verify this VM at boot (30s timeout)
   try {
     const vmDomain = agentDomain !== 'localhost' ? agentDomain : null;
     if (vmDomain) {
       const { checkSecretVm } = await import('secretvm-verify');
       console.log(`[attestation] Verifying ${vmDomain}...`);
-      const result = await checkSecretVm(vmDomain);
+      const result = await Promise.race([
+        checkSecretVm(vmDomain),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('attestation timeout')), 30_000)),
+      ]);
       const summary = {
         valid: result.valid,
         attestationType: result.attestationType,
@@ -221,7 +232,7 @@ async function main(): Promise<void> {
     console.error('[attestation] Verification failed (non-fatal):', err);
   }
 
-  // Code provenance — link running images to Git commits
+  // Code provenance — link running images to Git commits (30s timeout)
   try {
     const vmDomain = agentDomain !== 'localhost' ? agentDomain : null;
     if (vmDomain) {
@@ -229,14 +240,17 @@ async function main(): Promise<void> {
       console.log('[provenance] Resolving image provenance...');
 
       const https = await import('node:https');
-      const composeYaml = await new Promise<string>((resolve, reject) => {
-        https.get(`https://${vmDomain}:29343/docker-compose`, { rejectUnauthorized: false }, (res) => {
-          let data = '';
-          res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
-          res.on('end', () => resolve(data));
-          res.on('error', reject);
-        }).on('error', reject);
-      });
+      const composeYaml = await Promise.race([
+        new Promise<string>((resolve, reject) => {
+          https.get(`https://${vmDomain}:29343/docker-compose`, { rejectUnauthorized: false }, (res) => {
+            let data = '';
+            res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+            res.on('end', () => resolve(data));
+            res.on('error', reject);
+          }).on('error', reject);
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('provenance fetch timeout')), 30_000)),
+      ]);
 
       const yaml = composeYaml
         .replace(/^[\s\S]*?<pre[^>]*>/i, '')
