@@ -178,11 +178,13 @@ async function main(): Promise<void> {
     }
   })();
 
-  // SecretVM x402 client
+  // x402 client — used for SecretVM, market data, and other x402 services
+  let x402Client: import('@idiostasis/x402-client').X402Client | null = null;
   let secretVmClient: import('@idiostasis/x402-client').SecretVmClient | null = null;
   try {
     const { X402Client, SecretVmClient } = await import('@idiostasis/x402-client');
     const x402 = new X402Client(evmWallet);
+    x402Client = x402;
     const secretVmBaseUrl = db.config.get(CONFIG.SECRETVM_BASE_URL, {
       envKey: 'SECRETVM_BASE_URL',
       defaultValue: 'https://secretai.scrtlabs.com',
@@ -749,11 +751,17 @@ async function main(): Promise<void> {
   console.log('Auction ticker + scheduler started');
 
   let market: MarketContext | null = null;
-  if (coingeckoApiKey) {
-    market = new MarketContext({ coingeckoApiKey });
+  const x402Fetcher = x402Client
+    ? (url: string) => x402Client!.fetchWithPayment(url)
+    : undefined;
+  if (x402Fetcher || coingeckoApiKey) {
+    market = new MarketContext({
+      x402Fetcher,
+      coingeckoApiKey: x402Fetcher ? undefined : (coingeckoApiKey ?? undefined),
+    });
     await market.start();
   } else {
-    console.log('MarketContext skipped — missing COINGECKO_API_KEY');
+    console.log('MarketContext skipped — no x402 client or COINGECKO_API_KEY');
   }
 
   // Trading loop — hourly heartbeat

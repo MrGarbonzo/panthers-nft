@@ -460,6 +460,18 @@ export async function evaluateTradingDecision(
 
   const specValue = params.allocations.speculativeValueUsdc ?? params.allocations.llmValueUsdc ?? 0;
 
+  const sentimentBlock = (params.marketSnapshot.sentiment?.length ?? 0) > 0
+    ? 'Community sentiment (GenVox):\n' +
+      params.marketSnapshot.sentiment!.map((s) =>
+        `- ${s.coin}: ${s.signal} (score=${s.score}, confidence=${s.confidence}%) — ${s.summary}`,
+      ).join('\n') + '\n'
+    : '';
+
+  const newsBlock = params.marketSnapshot.news?.headlines?.length
+    ? 'Recent headlines:\n' +
+      params.marketSnapshot.news.headlines.slice(0, 5).map((h) => `- ${h}`).join('\n') + '\n'
+    : '';
+
   const user =
     `Deployable capital: ${params.deployableCapital.toFixed(2)} USDC\n` +
     `Liquidity floor: ${params.liquidityFloor.toFixed(2)} USDC\n` +
@@ -470,7 +482,9 @@ export async function evaluateTradingDecision(
     `Open positions:\n${positionsSummary}\n\n` +
     `Market: ${marketCoins}\n` +
     `Fear & Greed: ${fg ? `${fg.value} (${fg.classification})` : 'n/a'}\n` +
-    `${signalsBlock}\n\n` +
+    `${signalsBlock}\n` +
+    `${sentimentBlock}` +
+    `${newsBlock}\n` +
     `${params.personaContext}\n\n` +
     'Respond with: {"decision":"trade"|"rebalance"|"nothing","action":"buy"|"sell"|undefined,"token":"WETH"|"WBTC"|"LINK"|"AERO"|undefined,"bucket":"core"|"top10"|"speculative"|undefined,"amountUsdc":number|undefined,"reasoning":"one sentence"}\n' +
     'Rules:\n' +
