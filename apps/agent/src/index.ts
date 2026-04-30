@@ -4,6 +4,7 @@ import type { StorageBackend } from './db/storage-backend.js';
 import { CONFIG } from './db/config-keys.js';
 import { PanthersStateAdapter } from './state/adapter.js';
 import { completeSale, addFundsToNft, redeemNft } from './base/deposit.js';
+import { fulfillQueuedRedemptions } from './base/withdraw.js';
 import { BaseUsdcMonitor, type BaseInboundTransfer } from './base/usdc-monitor.js';
 import { createBaseRpcClients, getUsdcAddress } from './base/rpc.js';
 import { LLMRouter } from './llm/router.js';
@@ -683,6 +684,32 @@ async function main(): Promise<void> {
   await usdcMonitor.start();
   console.log(`[Boot] Base USDC monitor started (${baseNetwork})`);
 
+  // Sync WalletMonitor balance to state.liquidUsdcBalance
+  setInterval(async () => {
+    try {
+      const bal = walletMonitor.getBalances().baseUsdcBalance;
+      const current = await db.loadState(adapter);
+      if (current.liquidUsdcBalance !== bal) {
+        await db.saveState({ ...current, liquidUsdcBalance: bal }, adapter, cacheWriter);
+      }
+    } catch (err) {
+      console.error('[BalanceSync] Failed:', err);
+    }
+  }, 5 * 60 * 1000);
+
+  // Fulfil queued redemptions every 15 minutes
+  setInterval(() => {
+    void fulfillQueuedRedemptions({
+      db, adapter, cacheWriter,
+      onFulfilled: (req) => {
+        void moltbookLoop.onEvent(
+          'redemption_fulfilled',
+          `NFT redeemed — ${req.netUsdc.toFixed(2)} USDC released`,
+        );
+      },
+    });
+  }, 15 * 60 * 1000);
+
   // Periodic market update posts
   setInterval(() => {
     void moltbookLoop.onEvent('market_update', 'periodic market observation');
@@ -698,20 +725,52 @@ async function main(): Promise<void> {
     } catch {}
   }, 6 * 60 * 60 * 1000);
 
-  // Trading disabled — will be re-enabled with 1inch on Base
-  console.log('[Boot] Trading disabled (pending 1inch Base integration)');
-
   const ticker = new AuctionTicker({ db, adapter, cacheWriter });
   ticker.start();
   const scheduler = new AuctionScheduler({ db, adapter, llmRouter, cacheWriter, personaCtx });
   scheduler.start();
   console.log('Auction ticker + scheduler started');
 
+  let market: MarketContext | null = null;
   if (coingeckoApiKey) {
-    const market = new MarketContext({ coingeckoApiKey });
+    market = new MarketContext({ coingeckoApiKey });
     await market.start();
   } else {
     console.log('MarketContext skipped — missing COINGECKO_API_KEY');
+  }
+
+  // Trading loop — hourly heartbeat
+  if (market) {
+    const { OneInchClient } = await import('./trading/oneinch.js');
+    const { TradingLoop } = await import('./trading/loop.js');
+    const oneInchClient = new OneInchClient({
+      baseNetwork,
+      x402ApiUrl: process.env.X402_PRICE_API_URL,
+    });
+    const tradingLoop = new TradingLoop({
+      db, adapter, llmRouter, personaCtx,
+      marketCtx: market,
+      oneInchClient,
+      publicClient: publicClient as any,
+      walletClient: walletClient as any,
+      cacheWriter,
+      baseNetwork,
+    });
+
+    setInterval(async () => {
+      try {
+        const result = await tradingLoop.evaluate();
+        console.log(`[trading] ${result.action}: ${result.reason}`);
+        if (result.action !== 'skipped' && result.action !== 'nothing') {
+          void moltbookLoop.onEvent('trade_executed', `Trading loop: ${result.action} — ${result.reason}`);
+        }
+      } catch (err) {
+        console.error('[trading] Loop error:', err);
+      }
+    }, 60 * 60 * 1000);
+    console.log('[Boot] Trading loop armed (hourly heartbeat)');
+  } else {
+    console.log('[Boot] Trading loop skipped — no market context');
   }
 
   setInterval(async () => {

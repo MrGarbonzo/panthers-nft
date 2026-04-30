@@ -1,6 +1,11 @@
+import { TRADING_TOKENS } from './tokens.js';
+
 const DEFAULT_REFRESH_MS = 5 * 60 * 1000;
-const COINS = ['solana', 'bitcoin', 'ethereum'] as const;
-type Coin = (typeof COINS)[number];
+
+// Deduplicate coingecko IDs from TRADING_TOKENS + base chain
+const COINS: string[] = [
+  ...new Set([...TRADING_TOKENS.map((t) => t.coingeckoId), 'base']),
+];
 
 export interface CoinSnapshot {
   priceUsd: number;
@@ -13,7 +18,7 @@ export interface FearGreedSnapshot {
 }
 
 export interface MarketSnapshot {
-  coins: Record<Coin, CoinSnapshot>;
+  coins: Record<string, CoinSnapshot>;
   fearGreed: FearGreedSnapshot | null;
   lastUpdatedAt: number;
 }
@@ -35,7 +40,7 @@ export class MarketContext {
     await this.safeRefresh();
     this.timer = setInterval(() => void this.safeRefresh(), interval);
     console.log(
-      `MarketContext started (refresh ${Math.round(interval / 1000)}s)`,
+      `MarketContext started (refresh ${Math.round(interval / 1000)}s, coins: ${COINS.join(',')})`,
     );
   }
 
@@ -68,14 +73,16 @@ export class MarketContext {
       fearGreed,
       lastUpdatedAt: Date.now(),
     };
-    const sol = coins.solana;
+    const eth = coins['ethereum'];
+    const btc = coins['wrapped-bitcoin'] ?? coins['bitcoin'];
     console.log(
-      `MarketContext: SOL $${sol.priceUsd.toFixed(2)} (${sol.change24hPct >= 0 ? '+' : ''}${sol.change24hPct.toFixed(2)}%) ` +
+      `MarketContext: ETH $${eth?.priceUsd.toFixed(2) ?? '?'} ` +
+        `BTC $${btc?.priceUsd.toFixed(0) ?? '?'} ` +
         `F&G ${fearGreed ? `${fearGreed.value} (${fearGreed.classification})` : 'n/a'}`,
     );
   }
 
-  private async fetchCoinGecko(): Promise<Record<Coin, CoinSnapshot>> {
+  private async fetchCoinGecko(): Promise<Record<string, CoinSnapshot>> {
     const url =
       'https://api.coingecko.com/api/v3/simple/price' +
       `?ids=${COINS.join(',')}` +
@@ -91,7 +98,7 @@ export class MarketContext {
       string,
       { usd?: number; usd_24h_change?: number }
     >;
-    const out = {} as Record<Coin, CoinSnapshot>;
+    const out: Record<string, CoinSnapshot> = {};
     for (const coin of COINS) {
       const entry = data[coin];
       out[coin] = {

@@ -949,6 +949,7 @@ async function fetchAll() {
     renderAgentSections();
     renderNfts();
     loadTradingLog();
+    loadTradingStatus();
     loadAttestation();
     loadProvenance();
     $('last-updated').textContent = timeAgo(stats.lastUpdatedAt);
@@ -964,20 +965,20 @@ function renderFund() {
 
   // Allocation bar
   const a = stats.allocations;
-  const total = a.corePct + a.top10Pct + a.llmPct;
+  const total = a.corePct + a.top10Pct + a.speculativePct;
   const cashPct = Math.max(0, 100 - total);
   $('alloc-section').innerHTML = `
     <div class="alloc-label">ALLOCATION</div>
     <div class="alloc-bar">
-      ${a.corePct > 0 ? `<div class="alloc-seg core" style="flex:${a.corePct}">CORE ${a.corePct.toFixed(0)}%</div>` : ''}
+      ${a.corePct > 0 ? `<div class="alloc-seg core" style="flex:${a.corePct}">CORE (ETH) ${a.corePct.toFixed(0)}%</div>` : ''}
       ${a.top10Pct > 0 ? `<div class="alloc-seg top10" style="flex:${a.top10Pct}">TOP 10 ${a.top10Pct.toFixed(0)}%</div>` : ''}
-      ${a.llmPct > 0 ? `<div class="alloc-seg llm" style="flex:${a.llmPct}">LLM ${a.llmPct.toFixed(0)}%</div>` : ''}
-      ${cashPct > 0 ? `<div class="alloc-seg" style="flex:${cashPct};background:var(--surface2)">CASH ${cashPct.toFixed(0)}%</div>` : ''}
+      ${a.speculativePct > 0 ? `<div class="alloc-seg llm" style="flex:${a.speculativePct}">SPEC ${a.speculativePct.toFixed(0)}%</div>` : ''}
+      ${cashPct > 0 ? `<div class="alloc-seg" style="flex:${cashPct};background:var(--surface2)">LIQUID USDC ${cashPct.toFixed(0)}%</div>` : ''}
     </div>
     <div class="alloc-legend">
-      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:#3A3D42"></div>CORE ${formatUSD(a.coreUsdc)}</div>
-      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:var(--orange)"></div>TOP 10 ${formatUSD(a.top10Usdc)}</div>
-      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:var(--red)"></div>LLM ${formatUSD(a.llmUsdc)}</div>
+      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:#3A3D42"></div>CORE (ETH) ${formatUSD(a.coreUsdc)} <span style="color:var(--muted);font-size:11px">target 75%</span></div>
+      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:var(--orange)"></div>TOP 10 ${formatUSD(a.top10Usdc)} <span style="color:var(--muted);font-size:11px">target 20%</span></div>
+      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:var(--red)"></div>SPECULATIVE ${formatUSD(a.speculativeUsdc)} <span style="color:var(--muted);font-size:11px">target 5%</span></div>
     </div>
   `;
 
@@ -1150,13 +1151,13 @@ function renderAgentSections() {
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
         <span style="width:6px;height:6px;border-radius:50%;background:var(--gain);display:inline-block"></span>
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">SOLANA RPC</span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">BASE RPC</span>
         <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--gain);margin-left:auto">CONNECTED</span>
       </div>
       <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
         <span style="width:6px;height:6px;border-radius:50%;background:var(--gain);display:inline-block"></span>
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">BASE RPC</span>
-        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--gain);margin-left:auto">CONNECTED</span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">TRADING</span>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--gain);margin-left:auto">ARMED</span>
       </div>
       <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
         <span style="width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block"></span>
@@ -1169,6 +1170,7 @@ function renderAgentSections() {
         <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto">0</span>
       </div>
     </div>
+    <div id="trading-status-bar" style="margin-top:8px"></div>
   `;
 }
 
@@ -1238,7 +1240,8 @@ function renderMyNfts() {
           <div class="my-nft-nav">${formatUSD(nft.navUsdc)}</div>
           <div class="my-nft-mint" style="font-size:11px;color:var(--muted)">${truncAddr(nft.tokenId)}</div>
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-            <button class="action-btn small" onclick="handleDestroy('${nft.tokenId}','',${nft.navUsdc})">REDEEM & DESTROY</button>
+            <button class="action-btn small" onclick="handleWithdraw('${nft.tokenId}', ${nft.navUsdc})">WITHDRAW</button>
+            <button class="action-btn small secondary" onclick="handleClaimNft('${nft.tokenId}')">CLAIM</button>
             <button class="action-btn small secondary" onclick="showAddFunds('${nft.tokenId}')">ADD FUNDS</button>
           </div>
           <div id="nft-action-${nft.tokenId}" style="margin-top:8px"></div>
@@ -1514,15 +1517,95 @@ async function handleOffer(overrideAmount) {
 }
 
 
-async function handleDestroy(tokenId, mint, nav) {
+async function handleWithdraw(tokenId, nav) {
   if (!connectedWallet) return;
   const el = document.getElementById('nft-action-' + tokenId);
   if (!el) return;
 
-  el.innerHTML = '<div style="color:var(--muted);font-size:13px">Loading redemption details...</div>';
+  el.innerHTML = '<div style="color:var(--muted);font-size:13px">Loading withdrawal details...</div>';
 
   try {
-    const res = await fetch('/api/redeem', {
+    const res = await fetch('/api/withdraw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress: connectedWallet, tokenId }),
+    });
+    const data = await res.json();
+
+    if (res.status === 409) {
+      el.innerHTML = '<div class="inline-msg error">Redemption already queued for this NFT.</div>';
+      return;
+    }
+    if (res.status === 403) {
+      el.innerHTML = '<div class="inline-msg error">You do not own this NFT.</div>';
+      return;
+    }
+    if (res.status !== 200) {
+      el.innerHTML = '<div class="inline-msg error">' + (data.error || 'Withdrawal failed') + '</div>';
+      return;
+    }
+
+    const swingPct = (data.swingFactor * 100).toFixed(1);
+    const feePctDisplay = (data.feePct * 100).toFixed(0);
+
+    if (data.status === 'fulfilled') {
+      el.innerHTML = `
+        <div class="payment-panel" style="border-color:var(--gain)">
+          <div style="color:var(--gain);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;margin-bottom:8px">REDEMPTION PROCESSED</div>
+          <div class="payment-row">
+            <span class="payment-label">SWING FACTOR</span>
+            <span class="payment-value">${swingPct}%</span>
+          </div>
+          <div class="payment-row">
+            <span class="payment-label">FEE</span>
+            <span class="payment-value">${feePctDisplay}%</span>
+          </div>
+          <div class="payment-row">
+            <span class="payment-label">YOU RECEIVE</span>
+            <span class="payment-value" style="color:var(--gain);font-size:16px">${formatUSD(data.netUsdc)} USDC</span>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--muted)">USDC sent to your wallet.</div>
+        </div>
+      `;
+      setTimeout(() => void loadPortfolio(), 3000);
+    } else {
+      el.innerHTML = `
+        <div class="payment-panel" style="border-color:var(--orange)">
+          <div style="color:var(--orange);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;margin-bottom:8px">REDEMPTION QUEUED</div>
+          <div class="payment-row">
+            <span class="payment-label">SWING FACTOR</span>
+            <span class="payment-value">${swingPct}%</span>
+          </div>
+          <div class="payment-row">
+            <span class="payment-label">FEE</span>
+            <span class="payment-value">${feePctDisplay}%</span>
+          </div>
+          <div class="payment-row">
+            <span class="payment-label">YOU WILL RECEIVE</span>
+            <span class="payment-value" style="color:var(--gain);font-size:16px">${formatUSD(data.netUsdc)} USDC</span>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--muted)">
+            Queued — USDC will be sent within 72 hours when liquidity is available.
+          </div>
+        </div>
+      `;
+    }
+  } catch (e) {
+    el.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
+  }
+}
+
+async function handleClaimNft(tokenId) {
+  if (!connectedWallet) return;
+  const el = document.getElementById('nft-action-' + tokenId);
+  if (!el) return;
+
+  if (!confirm('Transfer this NFT to self-custody?')) return;
+
+  el.innerHTML = '<div style="color:var(--muted);font-size:13px">Processing...</div>';
+
+  try {
+    const res = await fetch('/api/claim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ walletAddress: connectedWallet, tokenId }),
@@ -1530,63 +1613,14 @@ async function handleDestroy(tokenId, mint, nav) {
     const data = await res.json();
 
     if (res.status !== 200) {
-      el.innerHTML = '<div class="inline-msg error">' + (data.error || 'Failed to get redemption info') + '</div>';
+      el.innerHTML = '<div class="inline-msg error">' + (data.error || 'Claim failed') + '</div>';
       return;
     }
 
-    el.innerHTML = `
-      <div class="payment-panel" style="border-color:#cc3333">
-        <div style="color:#cc3333;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;margin-bottom:8px">REDEEM FUNDS & DESTROY NFT</div>
-        <div class="payment-row">
-          <span class="payment-label">CURRENT NAV</span>
-          <span class="payment-value" style="color:var(--orange)">${formatUSD(data.currentNav)} USDC</span>
-        </div>
-        <div class="payment-row">
-          <span class="payment-label">FEE</span>
-          <span class="payment-value">${(data.feePct * 100).toFixed(0)}% (agent infrastructure)</span>
-        </div>
-        <div class="payment-row">
-          <span class="payment-label">YOU RECEIVE</span>
-          <span class="payment-value" style="color:var(--gain);font-size:16px">~${formatUSD(data.estimatedReturnUsdc)} USDC</span>
-        </div>
-        <div style="margin-top:16px;font-size:12px;color:var(--muted)">
-          Your NFT share will be destroyed. USDC will be sent to your wallet.
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="action-btn small danger" id="confirm-redeem-${tokenId}" onclick="executeRedeem('${tokenId}')">CONFIRM REDEEM</button>
-          <button class="action-btn small" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border)" onclick="document.getElementById('nft-action-${tokenId}').innerHTML=''">CANCEL</button>
-        </div>
-        <div id="redeem-status-${tokenId}"></div>
-      </div>
-    `;
+    el.innerHTML = '<div class="inline-msg success">NFT transferred to self-custody.</div>';
+    setTimeout(() => void loadPortfolio(), 2000);
   } catch (e) {
     el.innerHTML = '<div class="inline-msg error">Network error. Please try again.</div>';
-  }
-}
-
-async function executeRedeem(tokenId) {
-  const btn = document.getElementById('confirm-redeem-' + tokenId);
-  const statusEl = document.getElementById('redeem-status-' + tokenId);
-  if (!btn || !statusEl) return;
-
-  btn.disabled = true;
-  btn.textContent = 'PROCESSING...';
-  statusEl.innerHTML = '';
-
-  try {
-    // Mock NFTs: redemption is handled server-side. Just call the redeem endpoint
-    // and the agent removes the NFT from state. USDC transfer is separate.
-    // For now, confirm the redemption was already initiated by the /api/redeem call.
-    statusEl.innerHTML = '<div class="inline-msg success">Redemption confirmed. USDC will be sent to your wallet shortly.</div>';
-    btn.style.display = 'none';
-    // Refresh portfolio after a short delay
-    setTimeout(() => void loadPortfolio(), 3000);
-  } catch (e) {
-    console.error('Redeem failed:', e);
-    const msg = e.message || 'Redemption failed';
-    statusEl.innerHTML = '<div class="inline-msg error">' + msg + '</div>';
-    btn.disabled = false;
-    btn.textContent = 'CONFIRM REDEEM';
   }
 }
 
@@ -1841,6 +1875,24 @@ async function loadTradingLog() {
   } catch {
     container.innerHTML = '<div class="empty-state">FAILED TO LOAD TRADING LOG</div>';
   }
+}
+
+async function loadTradingStatus() {
+  const bar = document.getElementById('trading-status-bar');
+  if (!bar) return;
+  try {
+    const res = await fetch('/api/trading-status');
+    if (!res.ok) return;
+    const d = await res.json();
+    const lastTrade = d.lastTradeAt ? timeAgo(new Date(d.lastTradeAt).getTime()) : 'never';
+    bar.innerHTML = `
+      <div style="display:flex;gap:16px;font-size:12px;color:var(--muted);font-family:'Space Mono',monospace">
+        <span>Trades today: ${d.tradesToday}/${d.maxTradesPerDay}</span>
+        <span>Last trade: ${lastTrade}</span>
+        <span>Last rebalance: ${d.lastRebalanceAt ? timeAgo(new Date(d.lastRebalanceAt).getTime()) : 'never'}</span>
+      </div>
+    `;
+  } catch {}
 }
 
 function renderTradingLog(decisions) {

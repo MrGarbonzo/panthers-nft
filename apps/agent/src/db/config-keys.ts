@@ -39,4 +39,9 @@ export const CONFIG = {
   MOLTBOOK_SUBMOLTS_SEEDED: 'moltbook_submolts_seeded',
   MOLTBOOK_NAME: 'moltbook_name',
   MOLTBOOK_DESCRIPTION: 'moltbook_description',
+
+  TRADES_TODAY: 'trades_today',
+  TRADES_TODAY_DATE: 'trades_today_date',
+  LAST_TRADE_AT: 'last_trade_at',
+  LAST_REBALANCE_AT: 'last_rebalance_at',
 } as const;

@@ -12,7 +12,8 @@ export type MoltbookTrigger =
   | 'trade_executed'
   | 'donation_received'
   | 'market_update'
-  | 'survival';
+  | 'survival'
+  | 'redemption_fulfilled';
 
 const DEDUP_MS = 30 * 60 * 1000;
 const SUBMOLTS = ['aiagents', 'solana', 'autonomousai', 'technology'];

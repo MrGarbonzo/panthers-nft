@@ -8,7 +8,7 @@ export interface PersonalFund {
 
 export interface TradingDecisionRecord {
   id: string;
-  bucket: 'core' | 'top10' | 'llm';
+  bucket: 'core' | 'top10' | 'speculative';
   side: 'buy' | 'sell';
   tokenSymbol: string;
   tokenMint: string;
@@ -23,7 +23,23 @@ export interface TradingDecisionRecord {
   timestamp: number;
 }
 
-export type ActivityType = 'purchase' | 'add_funds' | 'redeem';
+export type ActivityType = 'purchase' | 'add_funds' | 'redeem' | 'withdrawal';
+
+export interface RedemptionRequest {
+  requestId: string;
+  tokenId: string;
+  ownerWallet: string;
+  requestedAt: number;
+  expiresAt: number;
+  navAtRequest: number;
+  swingFactor: number;
+  effectiveNav: number;
+  feePct: number;
+  netUsdc: number;
+  status: 'queued' | 'fulfilled' | 'expired' | 'cancelled';
+  fulfilledAt?: number;
+  fulfilledTxHash?: string;
+}
 
 export interface ActivityRecord {
   id: string;
@@ -48,6 +64,9 @@ export interface PanthersState {
   personalFund: PersonalFund;
   activityLog?: ActivityRecord[];
   tradingDecisionLog?: TradingDecisionRecord[];
+  redemptionQueue: Record<string, RedemptionRequest>;
+  peakNavUsdc: number;
+  liquidUsdcBalance: number;
 }
 
 export interface P2pListing {
@@ -82,7 +101,9 @@ export interface PoolState {
 export interface PoolAllocations {
   coreValueUsdc: number;
   top10ValueUsdc: number;
-  llmValueUsdc: number;
+  speculativeValueUsdc: number;
+  /** @deprecated Read alias — old state may have this instead of speculativeValueUsdc */
+  llmValueUsdc?: number;
   lastRebalancedAt: number;
 }
 
@@ -175,7 +196,7 @@ export interface Position {
   entryPrice: number;
   size: number;
   openedAt: number;
-  bucket: 'core' | 'top10' | 'llm';
+  bucket: 'core' | 'top10' | 'speculative';
   llmReasoning?: string;
 }
 
@@ -186,7 +207,7 @@ export interface TradeRecord {
   size: number;
   executedAt: number;
   pnl: number;
-  bucket: 'core' | 'top10' | 'llm';
+  bucket: 'core' | 'top10' | 'speculative';
   llmDecision: 'approve' | 'reject' | 'wait';
   llmReasoning: string;
   txSignature?: string;
@@ -202,7 +223,7 @@ export function defaultPanthersState(): PanthersState {
       allocations: {
         coreValueUsdc: 0,
         top10ValueUsdc: 0,
-        llmValueUsdc: 0,
+        speculativeValueUsdc: 0,
         lastRebalancedAt: 0,
       },
     },
@@ -231,6 +252,9 @@ export function defaultPanthersState(): PanthersState {
       lastUpdatedAt: 0,
     },
     activityLog: [],
+    redemptionQueue: {},
+    peakNavUsdc: 0,
+    liquidUsdcBalance: 0,
   };
 }
 

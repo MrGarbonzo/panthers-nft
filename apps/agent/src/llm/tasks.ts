@@ -1,11 +1,13 @@
 import type { LLM } from './client.js';
 import type {
   HagglingSession,
+  PoolAllocations,
   Position,
   SignalState,
 } from '../state/schema.js';
 import type { TechnicalSignals } from '../trading/indicators.js';
 import type { TokenInfo } from '../trading/types.js';
+import type { MarketSnapshot } from '../trading/market-context.js';
 
 export interface BuyIntentResult {
   hasBuyIntent: boolean;
@@ -124,7 +126,7 @@ export async function decideAuctionType(
 }
 
 export interface TradeProposal {
-  bucket: 'core' | 'top10' | 'llm';
+  bucket: 'core' | 'top10' | 'speculative';
   side: 'buy' | 'sell';
   tokenMint: string;
   tokenSymbol: string;
@@ -180,7 +182,7 @@ export async function nominateLlmBucketToken(
   signals: SignalState,
 ): Promise<TokenNomination> {
   const system =
-    'You are the Panthers Fund agent selecting a token for the high-risk 10% allocation bucket.\n' +
+    'You are the Panthers Fund agent selecting a token for the high-risk 5% speculative allocation bucket.\n' +
     'This bucket is for your best autonomous pick beyond the top 10.\n' +
     'Respond ONLY with JSON, no markdown fences.';
 
@@ -189,7 +191,7 @@ export async function nominateLlmBucketToken(
     `Current positions: ${JSON.stringify(currentPositions.map((p) => p.tokenMint))}\n` +
     `Sentiment: ${signals.lastSentimentScore}\n` +
     `Pool performance: ${signals.lastPoolPerformancePct}%\n` +
-    'Nominate ONE Solana token NOT in the top 10 list and NOT already held.\n' +
+    'Nominate ONE Base token NOT in the top 10 list and NOT already held.\n' +
     'Respond with: {"tokenMint":"<address>","tokenSymbol":"<symbol>","reasoning":"one sentence"}';
 
   return llm.invokeForJson<TokenNomination>(system, user, 300);
@@ -210,12 +212,10 @@ export interface GroupPostDecision {
 }
 
 export interface MarketContextSummary {
-  solPriceUsd: number;
-  solChange24hPct: number;
-  btcPriceUsd: number;
-  btcChange24hPct: number;
   ethPriceUsd: number;
   ethChange24hPct: number;
+  btcPriceUsd: number;
+  btcChange24hPct: number;
   fearGreedValue: number | null;
   fearGreedClassification: string | null;
   ageSeconds: number;
@@ -244,9 +244,8 @@ export async function decideAndGeneratePost(
 
   const marketBlock = context.market
     ? `Live market (${context.market.ageSeconds}s old):\n` +
-      `- SOL: $${context.market.solPriceUsd.toFixed(2)} (${context.market.solChange24hPct >= 0 ? '+' : ''}${context.market.solChange24hPct.toFixed(2)}% 24h)\n` +
-      `- BTC: $${context.market.btcPriceUsd.toFixed(0)} (${context.market.btcChange24hPct >= 0 ? '+' : ''}${context.market.btcChange24hPct.toFixed(2)}% 24h)\n` +
       `- ETH: $${context.market.ethPriceUsd.toFixed(2)} (${context.market.ethChange24hPct >= 0 ? '+' : ''}${context.market.ethChange24hPct.toFixed(2)}% 24h)\n` +
+      `- BTC: $${context.market.btcPriceUsd.toFixed(0)} (${context.market.btcChange24hPct >= 0 ? '+' : ''}${context.market.btcChange24hPct.toFixed(2)}% 24h)\n` +
       (context.market.fearGreedValue !== null
         ? `- Fear & Greed: ${context.market.fearGreedValue} (${context.market.fearGreedClassification})\n`
         : '')
@@ -395,7 +394,7 @@ export async function generateMoltbookPost(
   },
 ): Promise<MoltbookPostResult> {
   const system =
-    'You are the Panthers Fund agent posting on Moltbook — an autonomous AI fund that issues NFT shares on Solana.\n' +
+    'You are the Panthers Fund agent posting on Moltbook — an autonomous AI fund that issues NFT shares on Base.\n' +
     'No human in the loop. Confident, direct, not corporate.\n' +
     'Respond ONLY with a JSON object, no other text. No markdown fences.';
 
@@ -410,4 +409,75 @@ export async function generateMoltbookPost(
     'Pick the most relevant submolt for this event. Keep the title punchy.';
 
   return llm.invokeForJson<MoltbookPostResult>(system, user, 400);
+}
+
+export interface TradingDecisionResult {
+  decision: 'trade' | 'rebalance' | 'nothing';
+  action?: 'buy' | 'sell';
+  token?: string;
+  bucket?: 'core' | 'top10' | 'speculative';
+  amountUsdc?: number;
+  reasoning: string;
+}
+
+export async function evaluateTradingDecision(
+  llm: LLM,
+  params: {
+    deployableCapital: number;
+    liquidityFloor: number;
+    totalTvl: number;
+    currentPositions: Position[];
+    allocations: PoolAllocations;
+    marketSnapshot: MarketSnapshot;
+    signals: TechnicalSignals | null;
+    tradesToday: number;
+    pendingRedemptionsUsdc: number;
+    personaContext: string;
+  },
+): Promise<TradingDecisionResult> {
+  const system =
+    'You are the Panthers Fund autonomous trading agent on Base chain.\n' +
+    'You are risk-averse. You manage a fund via three buckets: core (ETH, 75%), top10 (20%), speculative (5%).\n' +
+    'Never deploy more than 75% of deployable capital to any single token.\n' +
+    'Never trade if pending redemptions exceed 50% of liquid USDC.\n' +
+    'Max 20% of deployable capital per individual trade.\n' +
+    'Respond ONLY with JSON, no markdown fences.';
+
+  const positionsSummary = params.currentPositions.length > 0
+    ? params.currentPositions.map((p) =>
+      `${p.tokenMint.slice(0, 10)}... bucket=${p.bucket} entry=$${p.entryPrice} size=${p.size}`,
+    ).join('\n')
+    : '(no open positions)';
+
+  const marketCoins = Object.entries(params.marketSnapshot.coins)
+    .map(([id, c]) => `${id}: $${c.priceUsd.toFixed(2)} (${c.change24hPct >= 0 ? '+' : ''}${c.change24hPct.toFixed(1)}%)`)
+    .join(', ');
+
+  const fg = params.marketSnapshot.fearGreed;
+  const signalsBlock = params.signals
+    ? `RSI: ${params.signals.rsi.toFixed(1)} | Trend: ${params.signals.trend} | Price vs SMA: ${params.signals.priceVsSma.toFixed(1)}%`
+    : 'Technical signals unavailable';
+
+  const specValue = params.allocations.speculativeValueUsdc ?? params.allocations.llmValueUsdc ?? 0;
+
+  const user =
+    `Deployable capital: ${params.deployableCapital.toFixed(2)} USDC\n` +
+    `Liquidity floor: ${params.liquidityFloor.toFixed(2)} USDC\n` +
+    `Total TVL: ${params.totalTvl.toFixed(2)} USDC\n` +
+    `Pending redemptions: ${params.pendingRedemptionsUsdc.toFixed(2)} USDC\n` +
+    `Trades today: ${params.tradesToday}/3\n\n` +
+    `Allocations: core=${params.allocations.coreValueUsdc.toFixed(2)} top10=${params.allocations.top10ValueUsdc.toFixed(2)} speculative=${specValue.toFixed(2)}\n` +
+    `Open positions:\n${positionsSummary}\n\n` +
+    `Market: ${marketCoins}\n` +
+    `Fear & Greed: ${fg ? `${fg.value} (${fg.classification})` : 'n/a'}\n` +
+    `${signalsBlock}\n\n` +
+    `${params.personaContext}\n\n` +
+    'Respond with: {"decision":"trade"|"rebalance"|"nothing","action":"buy"|"sell"|undefined,"token":"WETH"|"WBTC"|"LINK"|"AERO"|undefined,"bucket":"core"|"top10"|"speculative"|undefined,"amountUsdc":number|undefined,"reasoning":"one sentence"}\n' +
+    'Rules:\n' +
+    '- "trade": execute a single buy or sell. Specify action, token, bucket, amountUsdc.\n' +
+    '- "rebalance": adjust allocations toward target percentages. No action/token needed.\n' +
+    '- "nothing": no action warranted right now.\n' +
+    '- Prefer "nothing" if signals are neutral and allocations are balanced.';
+
+  return llm.invokeForJson<TradingDecisionResult>(system, user, 500);
 }

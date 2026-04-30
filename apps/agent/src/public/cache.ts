@@ -17,7 +17,7 @@ export interface NftPublicRecord {
 
 export interface PublicPosition {
   tokenMint: string;
-  bucket: 'core' | 'top10' | 'llm';
+  bucket: 'core' | 'top10' | 'speculative';
   entryPrice: number;
   sizeUsdc: number;
   openedAt: number;
@@ -29,7 +29,7 @@ export interface PublicTradeRecord {
   price: number;
   sizeUsdc: number;
   pnl: number;
-  bucket: 'core' | 'top10' | 'llm';
+  bucket: 'core' | 'top10' | 'speculative';
   executedAt: number;
 }
 
@@ -50,10 +50,10 @@ export interface PublicFundStats {
   allocations: {
     coreUsdc: number;
     top10Usdc: number;
-    llmUsdc: number;
+    speculativeUsdc: number;
     corePct: number;
     top10Pct: number;
-    llmPct: number;
+    speculativePct: number;
   };
   openPositions: PublicPosition[];
   recentTrades: PublicTradeRecord[];
@@ -149,13 +149,13 @@ export class PublicCacheWriter {
         allocations: {
           coreUsdc: alloc.coreValueUsdc,
           top10Usdc: alloc.top10ValueUsdc,
-          llmUsdc: alloc.llmValueUsdc,
+          speculativeUsdc: alloc.speculativeValueUsdc ?? alloc.llmValueUsdc ?? 0,
           corePct: totalPoolValueUsdc > 0
             ? (alloc.coreValueUsdc / totalPoolValueUsdc) * 100 : 0,
           top10Pct: totalPoolValueUsdc > 0
             ? (alloc.top10ValueUsdc / totalPoolValueUsdc) * 100 : 0,
-          llmPct: totalPoolValueUsdc > 0
-            ? (alloc.llmValueUsdc / totalPoolValueUsdc) * 100 : 0,
+          speculativePct: totalPoolValueUsdc > 0
+            ? ((alloc.speculativeValueUsdc ?? alloc.llmValueUsdc ?? 0) / totalPoolValueUsdc) * 100 : 0,
         },
         openPositions,
         recentTrades,

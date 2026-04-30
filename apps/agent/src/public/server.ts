@@ -11,6 +11,7 @@ import type { PersonaContextProvider } from '../persona/context-provider.js';
 import { evaluateOffer, type OfferEvaluation } from '../llm/tasks.js';
 import { CONFIG } from '../db/config-keys.js';
 import { getUsdcAddress } from '../base/rpc.js';
+import { processRedemptionRequest } from '../base/withdraw.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -156,6 +157,12 @@ export class PublicBalanceServer {
       }
       if (urlPath === '/api/trading-log') {
         const result = await this.handleTradingLog();
+        status = result.status;
+        this.respondJson(res, status, result.body);
+        return;
+      }
+      if (urlPath === '/api/trading-status') {
+        const result = this.handleTradingStatus();
         status = result.status;
         this.respondJson(res, status, result.body);
         return;
@@ -369,11 +376,6 @@ export class PublicBalanceServer {
     };
   }
 
-  private static readonly POST_STUBS: Record<string, string> = {
-    '/api/withdraw': 'POST /api/withdraw',
-    '/api/claim': 'POST /api/claim',
-  };
-
   private async handlePost(urlPath: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (urlPath === '/api/buy') {
       const body = await this.readBody(req);
@@ -387,9 +389,15 @@ export class PublicBalanceServer {
       this.respondJson(res, result.status, result.body);
       return;
     }
-    if (urlPath === '/api/redeem') {
+    if (urlPath === '/api/redeem' || urlPath === '/api/withdraw') {
       const body = await this.readBody(req);
-      const result = await this.handleRedeem(body);
+      const result = await this.handleWithdraw(body);
+      this.respondJson(res, result.status, result.body);
+      return;
+    }
+    if (urlPath === '/api/claim') {
+      const body = await this.readBody(req);
+      const result = await this.handleClaim(body);
       this.respondJson(res, result.status, result.body);
       return;
     }
@@ -397,11 +405,6 @@ export class PublicBalanceServer {
       const body = await this.readBody(req);
       const result = await this.handleAddFunds(body);
       this.respondJson(res, result.status, result.body);
-      return;
-    }
-    const endpoint = PublicBalanceServer.POST_STUBS[urlPath];
-    if (endpoint) {
-      this.respondJson(res, 501, { status: 'not_implemented', endpoint });
       return;
     }
     this.respondJson(res, 404, { error: 'Not found' });
@@ -671,7 +674,7 @@ export class PublicBalanceServer {
     };
   }
 
-  private async handleRedeem(rawBody: string): Promise<{ status: number; body: unknown }> {
+  private async handleWithdraw(rawBody: string): Promise<{ status: number; body: unknown }> {
     const db = this.params.db;
     const adapter = this.params.adapter;
     if (!db || !adapter) {
@@ -689,6 +692,9 @@ export class PublicBalanceServer {
     if (!walletAddress || typeof walletAddress !== 'string') {
       return { status: 400, body: { error: 'walletAddress is required' } };
     }
+    if (!isValidEvmAddress(walletAddress)) {
+      return { status: 400, body: { error: 'Invalid wallet address' } };
+    }
     if (!tokenId || typeof tokenId !== 'string') {
       return { status: 400, body: { error: 'tokenId is required' } };
     }
@@ -699,29 +705,109 @@ export class PublicBalanceServer {
       return { status: 404, body: { error: 'NFT not found' } };
     }
     if (nft.ownerWallet.toLowerCase() !== walletAddress.toLowerCase()) {
-      return { status: 403, body: { error: 'You do not own this NFT' } };
+      return { status: 403, body: { error: 'not_owner' } };
     }
 
-    const feePct = Number(db.config.get(CONFIG.REDEEM_FEE_PCT, {
-      envKey: 'REDEEM_FEE_PCT',
-      defaultValue: '0.10',
-    }));
-    const feesUsdc = nft.currentNav * feePct;
-    const estimatedReturnUsdc = Math.round((nft.currentNav - feesUsdc) * 100) / 100;
+    // Check for duplicate queued redemption
+    const existingQueued = Object.values(state.redemptionQueue ?? {}).find(
+      (r) => r.tokenId === tokenId && r.status === 'queued',
+    );
+    if (existingQueued) {
+      return { status: 409, body: { error: 'Redemption already queued for this NFT', requestId: existingQueued.requestId } };
+    }
+
+    try {
+      const request = await processRedemptionRequest({
+        db,
+        adapter,
+        tokenId,
+        ownerWallet: walletAddress,
+        cacheWriter: this.params.cacheWriter,
+      });
+
+      return {
+        status: 200,
+        body: {
+          requestId: request.requestId,
+          status: request.status,
+          netUsdc: request.netUsdc,
+          swingFactor: request.swingFactor,
+          feePct: request.feePct,
+          effectiveNav: request.effectiveNav,
+          queuedUntil: request.status === 'queued' ? new Date(request.expiresAt).toISOString() : undefined,
+          message: request.status === 'fulfilled'
+            ? 'Redemption processed immediately'
+            : 'Queued — USDC will be sent within 72 hours',
+        },
+      };
+    } catch (err: any) {
+      if (err.message === 'not_owner') {
+        return { status: 403, body: { error: 'not_owner' } };
+      }
+      if (err.message === 'duplicate_redemption') {
+        return { status: 409, body: { error: 'Redemption already queued for this NFT' } };
+      }
+      console.error('[Withdraw] Error:', err);
+      return { status: 500, body: { error: 'Internal server error' } };
+    }
+  }
+
+  private async handleClaim(rawBody: string): Promise<{ status: number; body: unknown }> {
+    const db = this.params.db;
+    const adapter = this.params.adapter;
+    if (!db || !adapter) {
+      return { status: 503, body: { error: 'Database not available' } };
+    }
+
+    let parsed: { walletAddress?: string; tokenId?: string };
+    try {
+      parsed = JSON.parse(rawBody);
+    } catch {
+      return { status: 400, body: { error: 'Invalid JSON body' } };
+    }
+
+    const { walletAddress, tokenId } = parsed;
+    if (!walletAddress || typeof walletAddress !== 'string') {
+      return { status: 400, body: { error: 'walletAddress is required' } };
+    }
+    if (!isValidEvmAddress(walletAddress)) {
+      return { status: 400, body: { error: 'Invalid wallet address' } };
+    }
+    if (!tokenId || typeof tokenId !== 'string') {
+      return { status: 400, body: { error: 'tokenId is required' } };
+    }
+
+    const state = await db.loadState(adapter);
+    const nft = state.nfts[tokenId];
+    if (!nft) {
+      return { status: 404, body: { error: 'NFT not found' } };
+    }
+    if (nft.ownerWallet.toLowerCase() !== walletAddress.toLowerCase()) {
+      return { status: 403, body: { error: 'not_owner' } };
+    }
+
+    const updatedNft = {
+      ...nft,
+      custodyMode: 'self' as const,
+      claimedAt: Date.now(),
+    };
+
+    const nextState = {
+      ...state,
+      nfts: { ...state.nfts, [tokenId]: updatedNft },
+    };
+    await db.saveState(nextState, adapter, this.params.cacheWriter);
 
     console.log(
-      `[Redeem] wallet=${walletAddress.slice(0, 8)}... tokenId=${tokenId} nav=${nft.currentNav} fee=${(feePct * 100).toFixed(0)}% return=${estimatedReturnUsdc}`,
+      `[Claim] wallet=${walletAddress.slice(0, 8)}... tokenId=${tokenId} → self-custody`,
     );
 
     return {
       status: 200,
       body: {
-        agentWallet: this.evmWalletAddress,
         tokenId,
-        currentNav: nft.currentNav,
-        feePct,
-        estimatedReturnUsdc,
-        instructions: `Click confirm to redeem Panthers #${nft.nftIndex}. You will receive approximately ${estimatedReturnUsdc} USDC back. A ${(feePct * 100).toFixed(0)}% fee is deducted for agent infrastructure.`,
+        custodyMode: 'self',
+        claimedAt: updatedNft.claimedAt,
       },
     };
   }
@@ -861,6 +947,27 @@ export class PublicBalanceServer {
         balance: balanceMinor,
         balanceUsdc: balanceMinor !== null ? balanceMinor / 1_000_000 : null,
         vmId: vmId ?? null,
+      },
+    };
+  }
+
+  private handleTradingStatus(): { status: number; body: unknown } {
+    const db = this.params.db;
+    if (!db) return { status: 503, body: { error: 'Database not available' } };
+
+    const tradesToday = Number(db.config.get(CONFIG.TRADES_TODAY) ?? '0');
+    const tradesTodayDate = db.config.get(CONFIG.TRADES_TODAY_DATE) ?? null;
+    const lastTradeAt = Number(db.config.get(CONFIG.LAST_TRADE_AT) ?? '0');
+    const lastRebalanceAt = Number(db.config.get(CONFIG.LAST_REBALANCE_AT) ?? '0');
+
+    return {
+      status: 200,
+      body: {
+        tradesToday,
+        tradesTodayDate,
+        lastTradeAt: lastTradeAt > 0 ? new Date(lastTradeAt).toISOString() : null,
+        lastRebalanceAt: lastRebalanceAt > 0 ? new Date(lastRebalanceAt).toISOString() : null,
+        maxTradesPerDay: 3,
       },
     };
   }

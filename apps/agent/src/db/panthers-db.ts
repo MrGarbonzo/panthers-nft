@@ -18,7 +18,17 @@ export class PanthersDb {
       return defaultPanthersState();
     }
     await adapter.deserialize(blob);
-    return adapter.getState();
+    const state = adapter.getState();
+    // Backfill fields added after initial schema
+    if (state.redemptionQueue === undefined) (state as any).redemptionQueue = {};
+    if (state.peakNavUsdc === undefined) (state as any).peakNavUsdc = 0;
+    if (state.liquidUsdcBalance === undefined) (state as any).liquidUsdcBalance = 0;
+    // Migrate llmValueUsdc → speculativeValueUsdc
+    const alloc = state.pool.allocations as any;
+    if (alloc.speculativeValueUsdc === undefined) {
+      alloc.speculativeValueUsdc = alloc.llmValueUsdc ?? 0;
+    }
+    return state;
   }
 
   async saveState(
