@@ -863,22 +863,18 @@ async function toggleWallet() {
   await connectWallet();
 }
 
-async function switchAccount() {
-  if (!window.ethereum) return;
-  try {
-    await window.ethereum.request({
-      method: 'wallet_requestPermissions',
-      params: [{ eth_accounts: {} }],
-    });
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    if (accounts[0]) {
-      connectedWallet = accounts[0];
-      $('wallet-btn').textContent = truncAddr(connectedWallet);
-      void loadPortfolio();
-    }
-  } catch (e) {
-    console.error('Switch account failed:', e);
+function overrideWallet() {
+  const input = $('manual-wallet');
+  if (!input) return;
+  const addr = input.value.trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+    alert('Invalid address. Paste a valid 0x... address.');
+    return;
   }
+  connectedWallet = addr;
+  $('wallet-btn').textContent = truncAddr(connectedWallet);
+  input.value = '';
+  void loadPortfolio();
 }
 
 async function connectWallet() {
@@ -1244,7 +1240,10 @@ function renderMyNfts() {
         <div class="stat-label">WALLET</div>
         <div class="stat-value" style="font-size:18px">${truncAddr(connectedWallet)}</div>
         <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:11px">${connectedWallet}</div>
-        <button class="action-btn small secondary" style="margin-top:8px;font-size:10px;padding:4px 10px" onclick="switchAccount()">SWITCH ACCOUNT</button>
+        <div style="margin-top:8px;display:flex;gap:4px;align-items:center">
+          <input type="text" id="manual-wallet" placeholder="Paste address to override" style="font-size:10px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:'Space Mono',monospace;width:180px">
+          <button class="action-btn small secondary" style="font-size:10px;padding:4px 10px" onclick="overrideWallet()">SET</button>
+        </div>
       </div>
     </div>
   `;
