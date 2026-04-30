@@ -849,7 +849,12 @@ function copyText(text) {
   navigator.clipboard.writeText(text).catch(() => {});
 }
 
-// Wallet connection
+// Wallet connection — clean implementation
+// MetaMask tracks "connected accounts per site" separately from "active account".
+// We use wallet_requestPermissions to always show the account picker.
+
+let accountsChangedHandler = null;
+
 async function toggleWallet() {
   if (connectedWallet) {
     connectedWallet = null;
@@ -863,33 +868,23 @@ async function toggleWallet() {
   await connectWallet();
 }
 
-function overrideWallet() {
-  const input = $('manual-wallet');
-  if (!input) return;
-  const addr = input.value.trim();
-  if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
-    alert('Invalid address. Paste a valid 0x... address.');
-    return;
-  }
-  connectedWallet = addr;
-  $('wallet-btn').textContent = truncAddr(connectedWallet);
-  input.value = '';
-  void loadPortfolio();
-}
-
 async function connectWallet() {
   if (!window.ethereum) {
     alert('MetaMask not detected. Please install MetaMask.');
     return false;
   }
   try {
-    // Revoke existing permissions first, then request fresh — forces account picker
-    try {
-      await window.ethereum.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] });
-    } catch {}
-    // Request fresh permissions — MetaMask shows account picker since we revoked
-    await window.ethereum.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    // wallet_requestPermissions always shows the account picker popup
+    const permissions = await window.ethereum.request({
+      method: 'wallet_requestPermissions',
+      params: [{ eth_accounts: {} }],
+    });
+
+    // After user picks an account, get it
+    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+    if (!accounts || accounts.length === 0) {
+      return false;
+    }
     connectedWallet = accounts[0];
     $('wallet-btn').textContent = truncAddr(connectedWallet);
     $('wallet-btn').classList.add('connected');
@@ -897,8 +892,12 @@ async function connectWallet() {
     if ($('tab-mynfts').classList.contains('active')) {
       await loadPortfolio();
     }
-    // Listen for account changes
-    window.ethereum.on('accountsChanged', (accs) => {
+
+    // Remove old listener, add fresh one
+    if (accountsChangedHandler) {
+      window.ethereum.removeListener('accountsChanged', accountsChangedHandler);
+    }
+    accountsChangedHandler = (accs) => {
       if (accs.length === 0) {
         connectedWallet = null;
         portfolio = null;
@@ -911,7 +910,8 @@ async function connectWallet() {
         $('wallet-btn').textContent = truncAddr(connectedWallet);
         void loadPortfolio();
       }
-    });
+    };
+    window.ethereum.on('accountsChanged', accountsChangedHandler);
     return true;
   } catch (e) {
     console.error('Wallet connect failed:', e);
@@ -1422,53 +1422,29 @@ function renderPaymentPanel(containerId, data) {
 const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
 async function executeUsdcTransfer(data, statusEl) {
-  if (!window.ethereum) {
-    throw new Error('MetaMask not found.');
-  }
+  if (!window.ethereum) throw new Error('MetaMask not found.');
+  if (!connectedWallet) throw new Error('No wallet connected.');
 
-  const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-  const fromAddress = accounts[0];
-  if (!fromAddress) throw new Error('No account available');
+  // Use the wallet address that was selected during connectWallet()
+  const from = connectedWallet;
 
-  // Check USDC balance before attempting transfer
-  const balanceCall = await window.ethereum.request({
-    method: 'eth_call',
-    params: [{
-      to: data.usdcAddress,
-      data: '0x70a08231' + fromAddress.slice(2).toLowerCase().padStart(64, '0'),
-    }, 'latest'],
-  });
-  const balanceUsdc = parseInt(balanceCall, 16) / 1_000_000;
-
-  if (balanceUsdc < data.amountUsdc) {
-    throw new Error(
-      'Insufficient USDC. Wallet ' + fromAddress + ' has ' + balanceUsdc.toFixed(2) +
-      ' USDC but needs ' + data.amountUsdc + '. If this is the wrong account, switch your active account in MetaMask and refresh the page.'
-    );
-  }
-
-  // Build the ERC-20 transfer calldata
+  // Build ERC-20 transfer(address,uint256) calldata
   const atomicAmount = BigInt(Math.round(data.amountUsdc * 1_000_000));
   const amountHex = atomicAmount.toString(16).padStart(64, '0');
   const toHex = data.agentWallet.slice(2).toLowerCase().padStart(64, '0');
-  const txData = '0xa9059cbb' + toHex + amountHex;
+  const calldata = '0xa9059cbb' + toHex + amountHex;
 
   if (statusEl && statusEl.textContent) statusEl.textContent = 'APPROVE IN WALLET...';
 
   const txHash = await window.ethereum.request({
     method: 'eth_sendTransaction',
-    params: [{
-      from: fromAddress,
-      to: data.usdcAddress,
-      data: txData,
-    }],
+    params: [{ from, to: data.usdcAddress, data: calldata }],
   });
 
   if (statusEl && statusEl.textContent) statusEl.textContent = 'CONFIRMING...';
 
   const provider = new ethers.BrowserProvider(window.ethereum);
   await provider.waitForTransaction(txHash);
-
   return txHash;
 }
 
@@ -1520,10 +1496,6 @@ async function handleBuy() {
 
     // Store pending sale data so retryPendingBuy can use it
     window._pendingBuyData = data;
-
-    // Show which account will be used
-    const preCheckAccounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    resultEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Sending from: ${preCheckAccounts[0]}</div>`;
 
     btn.textContent = 'APPROVE IN WALLET...';
     try {
