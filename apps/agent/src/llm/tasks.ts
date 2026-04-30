@@ -5,7 +5,7 @@ import type {
   SignalState,
 } from '../state/schema.js';
 import type { TechnicalSignals } from '../trading/indicators.js';
-import type { TokenInfo } from '../trading/birdeye.js';
+import type { TokenInfo } from '../trading/types.js';
 
 export interface BuyIntentResult {
   hasBuyIntent: boolean;

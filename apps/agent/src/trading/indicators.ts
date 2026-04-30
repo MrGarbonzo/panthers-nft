@@ -1,5 +1,5 @@
 import { RSI, SMA } from 'technicalindicators';
-import type { OhlcvCandle } from './birdeye.js';
+import type { OhlcvCandle } from './types.js';
 
 export interface TechnicalSignals {
   rsi: number;

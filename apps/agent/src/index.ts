@@ -1,29 +1,20 @@
-import { Connection } from '@solana/web3.js';
 import { mkdirSync } from 'node:fs';
 import { PanthersDb } from './db/panthers-db.js';
 import type { StorageBackend } from './db/storage-backend.js';
 import { CONFIG } from './db/config-keys.js';
 import { PanthersStateAdapter } from './state/adapter.js';
-import { initializeSolanaWallet } from './solana/wallet.js';
-import { initializeUmi } from './solana/umi-client.js';
-import { UsdcMonitor, type InboundTransfer } from './solana/monitor.js';
-import { NftMonitor } from './solana/nft-monitor.js';
-import { completeSale, addFundsToNft } from './solana/deposit.js';
+import { completeSale, addFundsToNft, redeemNft } from './base/deposit.js';
+import { BaseUsdcMonitor, type BaseInboundTransfer } from './base/usdc-monitor.js';
+import { createBaseRpcClients, getUsdcAddress } from './base/rpc.js';
 import { LLMRouter } from './llm/router.js';
-import { BirdeyeClient } from './trading/birdeye.js';
-import { JupiterClient } from './trading/jupiter.js';
-import { TradingLoop } from './trading/loop.js';
 import { PublicCacheWriter } from './public/cache.js';
 import { PublicBalanceServer } from './public/server.js';
 import { AuctionTicker } from './auction/ticker.js';
 import { AuctionScheduler } from './auction/scheduler.js';
-import { executeP2pSale } from './auction/p2p.js';
 import { MarketContext } from './trading/market-context.js';
-import { deriveWsUrl, isHeliusUrl } from './solana/rpc.js';
 import { PersonaEngine } from './persona/engine.js';
-import { WalletMonitor } from './persona/wallet-monitor.js';
 import { PersonaContextProvider } from './persona/context-provider.js';
-import { burnPanthersNft } from './solana/nft.js';
+import { WalletMonitor } from './persona/wallet-monitor.js';
 import { recalculateAllNavs } from './state/nav.js';
 import { appendActivity, type PanthersState } from './state/schema.js';
 import { XClient } from './social/x-client.js';
@@ -58,9 +49,10 @@ async function main(): Promise<void> {
   const db = new PanthersDb(backend);
   const adapter = new PanthersStateAdapter();
 
-  const solanaRpcUrl = db.config.get(CONFIG.SOLANA_RPC_URL, {
-    envKey: 'SOLANA_RPC_URL',
-  });
+  const baseNetwork = (db.config.get(CONFIG.BASE_NETWORK, {
+    envKey: 'BASE_NETWORK',
+    defaultValue: 'base-sepolia',
+  }) ?? 'base-sepolia') as 'base' | 'base-sepolia';
 
   const publicCachePath = db.config.get(CONFIG.PUBLIC_CACHE_PATH, {
     envKey: 'PUBLIC_CACHE_PATH',
@@ -72,10 +64,7 @@ async function main(): Promise<void> {
     defaultValue: '3000',
   }));
 
-  const usdcMint = db.config.get(CONFIG.USDC_MINT, {
-    envKey: 'USDC_MINT',
-    defaultValue: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-  })!;
+  const usdcAddress = getUsdcAddress(baseNetwork);
 
   const firstBootAt = Number(db.config.get(CONFIG.FIRST_BOOT_AT, {
     defaultValue: String(Date.now()),
@@ -86,43 +75,20 @@ async function main(): Promise<void> {
   await cacheWriter.write(state).catch((err) =>
     console.error('Initial cache write failed:', err),
   );
-  const keypair = initializeSolanaWallet(db);
 
   // EVM wallet — generated on first boot, stored in DB
   const { initializeEvmWallet } = await import('./wallet/evm-wallet.js');
   const evmWallet = initializeEvmWallet(db);
 
-  let connection: Connection;
-  let effectiveRpcUrl: string;
-  let effectiveWsUrl: string | undefined;
+  // Base RPC clients
+  const { publicClient, walletClient, chain, account } = await createBaseRpcClients(
+    evmWallet.mnemonic,
+    baseNetwork,
+  );
 
-  if (solanaRpcUrl) {
-    connection = new Connection(solanaRpcUrl, 'confirmed');
-    effectiveRpcUrl = solanaRpcUrl;
-    console.log('Solana RPC: Helius (API key)');
-  } else {
-    try {
-      const { createX402Connection } = await import('./solana/x402-connection.js');
-      const { mnemonicToAccount: mta } = await import('viem/accounts');
-      const evmPrivKeyHex = Buffer.from(mta(evmWallet.mnemonic).getHdKey().privateKey!).toString('hex');
-      const solNetwork = (process.env.SOLANA_NETWORK ?? 'solana-devnet') as 'solana-devnet' | 'solana-mainnet';
-      const x402Result = await createX402Connection(evmPrivKeyHex, solNetwork);
-      connection = x402Result.connection;
-      effectiveRpcUrl = `https://x402.quicknode.com/${solNetwork}`;
-      effectiveWsUrl = x402Result.wsUrl;
-      console.log(`Solana RPC: QuickNode x402 (${solNetwork})`);
-    } catch (x402Err) {
-      console.warn(`[x402-rpc] Failed to initialize QuickNode x402: ${x402Err}`);
-      const fallbackUrl = 'https://api.devnet.solana.com';
-      connection = new Connection(fallbackUrl, 'confirmed');
-      effectiveRpcUrl = fallbackUrl;
-      console.log('Solana RPC: public devnet (fallback)');
-    }
-  }
-
-  const umi = initializeUmi(keypair, effectiveRpcUrl);
-
-  console.log(`Solana public key: ${keypair.publicKey.toBase58()}`);
+  console.log(`EVM wallet: ${evmWallet.address}`);
+  console.log(`Base network: ${baseNetwork}`);
+  console.log(`USDC address: ${usdcAddress}`);
   console.log(
     `Pool totalUsdcDeposited: ${state.pool.totalUsdcDeposited}, totalUsdcCurrentValue: ${state.pool.totalUsdcCurrentValue}`,
   );
@@ -149,7 +115,6 @@ async function main(): Promise<void> {
 
   const publicServer = new PublicBalanceServer({
     cacheWriter,
-    connection,
     db,
     adapter,
     port: publicPort,
@@ -157,7 +122,6 @@ async function main(): Promise<void> {
     startedAt: Date.now(),
     nftImagesDir,
     storageBackend,
-    solanaWalletAddress: keypair.publicKey.toBase58(),
     evmWalletAddress: evmWallet.address,
   });
   publicServer.start();
@@ -183,7 +147,7 @@ async function main(): Promise<void> {
       if (!existingTokenId) {
         const result = await registry.register({
           name: 'Panthers Fund',
-          description: 'Autonomous AI NFT fund on Solana',
+          description: 'Autonomous AI NFT fund on Base',
           services: [
             { name: 'discovery', endpoint: `http://${agentDomain}:3001/discover` },
             { name: 'dashboard', endpoint: `http://${agentDomain}:${port}` },
@@ -263,7 +227,6 @@ async function main(): Promise<void> {
       const { parseCompose, parseImageRef, resolveImage } = await import('code-provenance');
       console.log('[provenance] Resolving image provenance...');
 
-      // Fetch compose from VM's attestation endpoint (self-signed cert)
       const https = await import('node:https');
       const composeYaml = await new Promise<string>((resolve, reject) => {
         https.get(`https://${vmDomain}:29343/docker-compose`, { rejectUnauthorized: false }, (res) => {
@@ -274,7 +237,6 @@ async function main(): Promise<void> {
         }).on('error', reject);
       });
 
-      // Strip HTML wrapping if present
       const yaml = composeYaml
         .replace(/^[\s\S]*?<pre[^>]*>/i, '')
         .replace(/<\/pre>[\s\S]*$/i, '')
@@ -321,20 +283,17 @@ async function main(): Promise<void> {
         SnapshotManager,
         SecretLabsAttestationProvider,
       } = await import('@idiostasis/core');
-      const { createHash, randomBytes } = await import('node:crypto');
       const { generateKeyPairSync, sign: edSign } = await import('node:crypto');
       const { IdiostasisStorageBackend } = await import('./db/idiostasis-backend.js');
       const protocolDb = (backend as InstanceType<typeof IdiostasisStorageBackend>).db;
       const vaultKey = vaultKeyManager.getKey();
 
       const teeInstanceId = await resolveTeeInstanceId();
-      // Dev signer — production uses TEE signing service
       const devKeyPair = generateKeyPairSync('ed25519');
       const signer = async (data: Uint8Array): Promise<Uint8Array> => {
         return new Uint8Array(edSign(null, Buffer.from(data), devKeyPair.privateKey));
       };
 
-      // Self-attest RTMR3
       let agentRtmr3 = protocolDb.getConfig('agent_rtmr3') ?? 'dev-measurement';
       try {
         const provider = new SecretLabsAttestationProvider();
@@ -356,11 +315,11 @@ async function main(): Promise<void> {
         agentApprovedRtmr3: [agentRtmr3],
         guardianApprovedRtmr3: guardianRtmr3,
         heartbeatIntervalMs: 30000,
-        livenessFailureThreshold: 6,
+        livenessFailureThreshold: 10,
         reAttestationIntervalHours: 6,
         dbSnapshotIntervalMs: 600000,
         peerStalenessThresholdMs: 300000,
-        minGuardianCount: 2,
+        minGuardianCount: 1,
         backupJitterMaxMs: 15000,
         reAttestFailureLimit: 2,
         pccsEndpoints: ['https://pccs.scrtlabs.com/dcap-tools/quote-parse'],
@@ -451,7 +410,6 @@ async function main(): Promise<void> {
       if (secretVmClient) {
         const erc8004TokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
 
-        // Fetch guardian compose template and inject token ID
         if (!protocolDb.getConfig('guardian_compose') && erc8004TokenId) {
           try {
             const composeUrl = process.env.GUARDIAN_COMPOSE_URL
@@ -468,12 +426,10 @@ async function main(): Promise<void> {
           }
         }
 
-        // Bootstrap backup_rtmr3 so AutonomousGuardianManager.evaluate() doesn't skip
         if (!protocolDb.getConfig('backup_rtmr3')) {
           protocolDb.setConfig('backup_rtmr3', agentRtmr3);
         }
 
-        // Build guardian VM client adapter
         const svm = secretVmClient;
         const guardianVmClient = {
           createVm: async (params: { name: string; dockerCompose: Uint8Array }) => {
@@ -497,13 +453,11 @@ async function main(): Promise<void> {
           protocolDb, protocolConfig as any, guardianVmClient,
         );
 
-        // 15 min: first guardian check
         setTimeout(() => {
           console.log('[protocol] Auto-provision check: 15 min elapsed');
           void guardianManager.evaluate().catch(e => console.error('[protocol] Guardian eval failed:', e));
         }, 15 * 60 * 1000);
 
-        // 30 min: second guardian check + start regular loop
         setTimeout(() => {
           console.log('[protocol] Auto-provision check: 30 min elapsed');
           void guardianManager.evaluate().catch(e => console.error('[protocol] Guardian eval failed:', e));
@@ -557,10 +511,15 @@ async function main(): Promise<void> {
   llmRouter.setPersona(personaEngine);
   console.log(`[Boot] Config loaded. SecretAI base: ${secretAiBaseUrl}`);
 
+  // Base RPC URL for balance polling (use public endpoint)
+  const baseRpcForPolling = baseNetwork === 'base'
+    ? 'https://mainnet.base.org'
+    : 'https://sepolia.base.org';
+
   const walletMonitor = new WalletMonitor({
-    connection,
-    agentWallet: keypair.publicKey.toBase58(),
-    usdcMintSolana: usdcMint,
+    evmWalletAddress: evmWallet.address,
+    usdcAddress,
+    rpcUrl: baseRpcForPolling,
   });
   await walletMonitor.start();
 
@@ -568,274 +527,25 @@ async function main(): Promise<void> {
     db,
     adapter,
     walletMonitor,
-    dailyBurnRate: dailyBurnRate,
+    dailyBurnRate,
     firstBootAt,
-    agentWallet: keypair.publicKey.toBase58(),
+    agentWallet: evmWallet.address,
   });
 
   publicServer.setLlmDependencies(llmRouter, personaCtx);
 
-  const wsUrl = effectiveWsUrl
-    ?? (effectiveRpcUrl.startsWith('https://') || effectiveRpcUrl.startsWith('http://') ? deriveWsUrl(effectiveRpcUrl) : undefined);
-
-  if (wsUrl) {
-    const monitor = new UsdcMonitor({
-      wsUrl,
-      rpcUrl: effectiveRpcUrl,
-      agentWallet: keypair.publicKey.toBase58(),
-      usdcMint,
-      onInboundTransfer: async (transfer: InboundTransfer) => {
-        const currentState = await db.loadState(adapter);
-        const memo = transfer.memo;
-        const memoMatch =
-          memo !== null ? currentState.pendingSales[memo] : undefined;
-        const walletMatch = memoMatch ?? Object.values(currentState.pendingSales).find(
-          (s) =>
-            s.status === 'awaiting_payment' &&
-            s.buyerWallet.toLowerCase() === transfer.senderWallet.toLowerCase() &&
-            Date.now() < s.expiresAt,
-        );
-        const match = walletMatch;
-        if (!match) {
-          const alreadyPaid = Object.values(currentState.pendingSales).some(
-            (s) =>
-              s.status === 'paid' &&
-              s.buyerWallet.toLowerCase() === transfer.senderWallet.toLowerCase(),
-          );
-          if (alreadyPaid) {
-            console.log(
-              `Already-processed transfer from ${transfer.senderWallet.slice(0, 8)}..., skipping`,
-            );
-            return;
-          }
-          const amount = transfer.amountUsdc;
-          console.log(
-            `Donation: ${transfer.txSignature} amount=${amount} from=${transfer.senderWallet.slice(0, 8)}...`,
-          );
-          const pf = currentState.personalFund ?? {
-            totalFeesCollectedUsdc: 0,
-            totalDonationsUsdc: 0,
-            totalInfraSpendSolanaUsdc: 0,
-            totalInfraSpendBaseUsdc: 0,
-            lastUpdatedAt: 0,
-          };
-          const updated: PanthersState = {
-            ...currentState,
-            personalFund: {
-              ...pf,
-              totalDonationsUsdc: pf.totalDonationsUsdc + amount,
-              lastUpdatedAt: Date.now(),
-            },
-          };
-          await db.saveState(updated, adapter, cacheWriter);
-          void xPostingLoop?.onEvent('donation_received', `${amount.toFixed(2)} USDC received`);
-          void moltbookLoop.onEvent('donation_received', `${amount.toFixed(2)} USDC received`);
-          return;
-        }
-        if (match.status !== 'awaiting_payment') {
-          console.log(
-            `Transfer for non-awaiting sale ${match.saleId} (status=${match.status}); ignoring`,
-          );
-          return;
-        }
-        if (Date.now() > match.expiresAt) {
-          console.log(`Sale ${match.saleId} expired; ignoring transfer`);
-          return;
-        }
-
-        if (match.listingId) {
-          const listing = currentState.p2pListings[match.listingId];
-          if (!listing) {
-            console.log(`P2P listing not found: ${match.listingId}`);
-            return;
-          }
-          try {
-            const result = await executeP2pSale({
-              db,
-              adapter,
-              umi,
-              connection,
-              agentKeypair: keypair,
-              cacheWriter,
-              listingId: match.listingId,
-              buyerWallet: match.buyerWallet,
-              agreedPriceUsdc: transfer.amountUsdc,
-              txSignature: transfer.txSignature,
-              agentPublicUrl,
-              usdcMint,
-            });
-            console.log(`P2P sale complete: newTokenId=${result.newTokenId}`);
-          } catch (err) {
-            console.error(`Failed P2P sale ${match.saleId}:`, err);
-          }
-          return;
-        }
-
-        if (match.type === 'add_funds' && match.targetTokenId) {
-          try {
-            const result = await addFundsToNft({
-              db,
-              adapter,
-              saleId: match.saleId,
-              targetTokenId: match.targetTokenId,
-              confirmedAmountUsdc: transfer.amountUsdc,
-              txSignature: transfer.txSignature,
-              cacheWriter,
-            });
-            console.log(
-              `[AddFunds] Completed: tokenId=${result.tokenId} newNav=${result.newNav.toFixed(2)}`,
-            );
-          } catch (err) {
-            console.error(`Failed to add funds for ${match.saleId}:`, err);
-          }
-        } else {
-          try {
-            const result = await completeSale({
-              db,
-              adapter,
-              umi,
-              rpcUrl: effectiveRpcUrl,
-              saleId: match.saleId,
-              confirmedAmountUsdc: transfer.amountUsdc,
-              txSignature: transfer.txSignature,
-              cacheWriter,
-              agentPublicUrl,
-            });
-            const updatedState = await db.loadState(adapter);
-            const nft = updatedState.nfts[result.tokenId];
-            console.log(
-              `Sale completed: tokenId=${result.tokenId} mintAddress=${result.mintAddress} nftIndex=${nft?.nftIndex ?? '?'}`,
-            );
-            void moltbookLoop.onEvent('nft_minted', `NFT #${result.tokenId} minted`);
-          } catch (err) {
-            console.error(`Failed to complete sale ${match.saleId}:`, err);
-          }
-        }
-      },
-    });
-    monitor.start();
-    console.log(`[Boot] USDC monitor started (ws: ${wsUrl.split('?')[0]}...)`);
-  } else {
-    console.log('[Boot] USDC monitor skipped — no WebSocket URL available');
-  }
-
-  const nftMonitor = new NftMonitor({
-    rpcUrl: effectiveRpcUrl,
-    agentWallet: keypair.publicKey.toBase58(),
-    onInboundNft: async ({ mintAddress, fromWallet, txSignature }) => {
-      const currentState = await db.loadState(adapter);
-      const nft = Object.values(currentState.nfts).find(
-        (n) => n.mintAddress === mintAddress,
-      );
-      if (!nft || nft.custodyMode !== 'self') {
-        console.log(`[NftMonitor] Unmatched NFT inbound: ${mintAddress}`);
-        return;
-      }
-      const feePct = Number(db.config.get(CONFIG.REDEEM_FEE_PCT, {
-        envKey: 'REDEEM_FEE_PCT',
-        defaultValue: '0.10',
-      }));
-      const feesUsdc = nft.currentNav * feePct;
-      const withdrawnUsdc = nft.currentNav - feesUsdc;
-
-      try {
-        await burnPanthersNft({
-          umi,
-          mintAddress: nft.mintAddress,
-          ownerWallet: keypair.publicKey.toBase58(),
-        });
-      } catch (err) {
-        console.error(`[NftMonitor] Burn failed for ${mintAddress}:`, err);
-        return;
-      }
-
-      const { [nft.tokenId]: _removed, ...remainingNfts } = currentState.nfts;
-      void _removed;
-
-      let nextState: PanthersState = {
-        ...currentState,
-        nfts: remainingNfts,
-        pool: {
-          ...currentState.pool,
-          totalUsdcDeposited: currentState.pool.totalUsdcDeposited - nft.usdcDeposited,
-          totalUsdcCurrentValue: currentState.pool.totalUsdcCurrentValue - nft.currentNav,
-        },
-        personalFund: {
-          ...(currentState.personalFund ?? { totalFeesCollectedUsdc: 0, totalDonationsUsdc: 0, totalInfraSpendSolanaUsdc: 0, totalInfraSpendBaseUsdc: 0, lastUpdatedAt: 0 }),
-          totalFeesCollectedUsdc: (currentState.personalFund?.totalFeesCollectedUsdc ?? 0) + feesUsdc,
-          lastUpdatedAt: Date.now(),
-        },
-      };
-      nextState = recalculateAllNavs(nextState);
-      nextState = appendActivity(nextState, {
-        type: 'redeem',
-        wallet: fromWallet,
-        nftLabel: `Panthers #${nft.nftIndex}`,
-        amountUsdc: withdrawnUsdc,
-        txSignature,
-      });
-      await db.saveState(nextState, adapter, cacheWriter);
-
-      console.log(
-        `[NftMonitor] Redemption: burned ${mintAddress}, sending ${withdrawnUsdc.toFixed(2)} USDC to ${fromWallet}`,
-      );
-
-      try {
-        const { processWithdrawal: _ } = await import('./solana/withdraw.js');
-        void _;
-        const { PublicKey: PK } = await import('@solana/web3.js');
-        const {
-          createTransferInstruction: cti,
-          getAssociatedTokenAddress: gata,
-          getOrCreateAssociatedTokenAccount: gocata,
-        } = await import('@solana/spl-token');
-        const { Transaction: Tx, sendAndConfirmTransaction: sact } =
-          await import('@solana/web3.js');
-
-        const usdcPk = new PK(usdcMint);
-        const sourceAta = await gata(usdcPk, keypair.publicKey);
-        const destAta = await gocata(connection, keypair, usdcPk, new PK(fromWallet));
-        const atomicAmount = BigInt(Math.floor(withdrawnUsdc * 1_000_000));
-        const tx = new Tx().add(
-          cti(sourceAta, destAta.address, keypair.publicKey, atomicAmount),
-        );
-        await sact(connection, tx, [keypair]);
-        console.log(`[NftMonitor] Sent ${withdrawnUsdc.toFixed(2)} USDC to ${fromWallet}`);
-      } catch (err) {
-        console.error(`[NftMonitor] USDC transfer failed:`, err);
-      }
-    },
+  // Moltbook posting loop (declared early so USDC monitor callback can reference it)
+  const moltbookClient = new MoltbookClient();
+  const moltbookLoop = new MoltbookPostingLoop({
+    client: moltbookClient,
+    llmRouter,
+    personaCtx,
+    db,
+    adapter,
   });
-  for (const nft of Object.values(state.nfts)) {
-    if (nft.custodyMode === 'agent') nftMonitor.seedKnownMint(nft.mintAddress);
-  }
-  nftMonitor.start();
+  await moltbookLoop.initialize();
 
-  const onBirdeyeSpend = async (amountUsdc: number) => {
-    try {
-      const s = await db.loadState(adapter);
-      const spf = s.personalFund ?? { totalFeesCollectedUsdc: 0, totalDonationsUsdc: 0, totalInfraSpendSolanaUsdc: 0, totalInfraSpendBaseUsdc: 0, lastUpdatedAt: 0 };
-      const updated: PanthersState = {
-        ...s,
-        personalFund: {
-          ...spf,
-          totalInfraSpendSolanaUsdc: spf.totalInfraSpendSolanaUsdc + amountUsdc,
-          lastUpdatedAt: Date.now(),
-        },
-      };
-      await db.saveState(updated, adapter, cacheWriter);
-    } catch {}
-  };
-
-  const birdeyePaymentRpc = process.env.BIRDEYE_PAYMENT_RPC_URL ?? 'https://api.mainnet-beta.solana.com';
-
-  const birdeye = new BirdeyeClient({
-    keypair,
-    paymentRpcUrl: birdeyePaymentRpc,
-    onSpend: (amount) => void onBirdeyeSpend(amount),
-  });
-  const jupiterSwapRpc = process.env.JUPITER_RPC_URL ?? 'https://api.mainnet-beta.solana.com';
-  const jupiter = new JupiterClient(connection, keypair, jupiterSwapRpc);
+  // X posting loop
   const xApiKey = db.config.get(CONFIG.X_API_KEY, { envKey: 'X_API_KEY' });
   const xApiSecret = db.config.get(CONFIG.X_API_SECRET, { envKey: 'X_API_SECRET' });
   const xAccessToken = db.config.get(CONFIG.X_ACCESS_TOKEN, { envKey: 'X_ACCESS_TOKEN' });
@@ -860,16 +570,118 @@ async function main(): Promise<void> {
     console.log('[Boot] X posting skipped — credentials not configured');
   }
 
-  // Moltbook posting loop
-  const moltbookClient = new MoltbookClient();
-  const moltbookLoop = new MoltbookPostingLoop({
-    client: moltbookClient,
-    llmRouter,
-    personaCtx,
-    db,
-    adapter,
+  // Base USDC monitor — watches for inbound ERC-20 transfers
+  const usdcMonitor = new BaseUsdcMonitor({
+    publicClient: publicClient as any,
+    agentWallet: evmWallet.address as `0x${string}`,
+    usdcAddress: usdcAddress as `0x${string}`,
+    onInboundTransfer: async (transfer: BaseInboundTransfer) => {
+      const currentState = await db.loadState(adapter);
+      const memo = transfer.memo;
+
+      // Try memo match first, then wallet match
+      const memoMatch = memo !== null ? currentState.pendingSales[memo] : undefined;
+      const walletMatch = memoMatch ?? Object.values(currentState.pendingSales).find(
+        (s) =>
+          s.status === 'awaiting_payment' &&
+          s.buyerWallet.toLowerCase() === transfer.senderWallet.toLowerCase() &&
+          Date.now() < s.expiresAt,
+      );
+      const match = walletMatch;
+
+      if (!match) {
+        const alreadyPaid = Object.values(currentState.pendingSales).some(
+          (s) =>
+            s.status === 'paid' &&
+            s.buyerWallet.toLowerCase() === transfer.senderWallet.toLowerCase(),
+        );
+        if (alreadyPaid) {
+          console.log(
+            `Already-processed transfer from ${transfer.senderWallet.slice(0, 8)}..., skipping`,
+          );
+          return;
+        }
+
+        // Unmatched transfer — treat as donation
+        const amount = transfer.amountUsdc;
+        console.log(
+          `Donation: ${transfer.txHash} amount=${amount} from=${transfer.senderWallet.slice(0, 8)}...`,
+        );
+        const pf = currentState.personalFund ?? {
+          totalFeesCollectedUsdc: 0,
+          totalDonationsUsdc: 0,
+          totalInfraSpendSolanaUsdc: 0,
+          totalInfraSpendBaseUsdc: 0,
+          lastUpdatedAt: 0,
+        };
+        const updated: PanthersState = {
+          ...currentState,
+          personalFund: {
+            ...pf,
+            totalDonationsUsdc: pf.totalDonationsUsdc + amount,
+            lastUpdatedAt: Date.now(),
+          },
+        };
+        await db.saveState(updated, adapter, cacheWriter);
+        void xPostingLoop?.onEvent('donation_received', `${amount.toFixed(2)} USDC received`);
+        void moltbookLoop.onEvent('donation_received', `${amount.toFixed(2)} USDC received`);
+        return;
+      }
+
+      if (match.status !== 'awaiting_payment') {
+        console.log(
+          `Transfer for non-awaiting sale ${match.saleId} (status=${match.status}); ignoring`,
+        );
+        return;
+      }
+      if (Date.now() > match.expiresAt) {
+        console.log(`Sale ${match.saleId} expired; ignoring transfer`);
+        return;
+      }
+
+      // Handle add-funds vs new purchase
+      if (match.type === 'add_funds' && match.targetTokenId) {
+        try {
+          const result = await addFundsToNft({
+            db,
+            adapter,
+            saleId: match.saleId,
+            targetTokenId: match.targetTokenId,
+            confirmedAmountUsdc: transfer.amountUsdc,
+            txHash: transfer.txHash,
+            cacheWriter,
+          });
+          console.log(
+            `[AddFunds] Completed: tokenId=${result.tokenId} newNav=${result.newNav.toFixed(2)}`,
+          );
+        } catch (err) {
+          console.error(`Failed to add funds for ${match.saleId}:`, err);
+        }
+      } else {
+        try {
+          const result = await completeSale({
+            db,
+            adapter,
+            saleId: match.saleId,
+            confirmedAmountUsdc: transfer.amountUsdc,
+            txHash: transfer.txHash,
+            cacheWriter,
+            agentPublicUrl,
+          });
+          const updatedState = await db.loadState(adapter);
+          const nft = updatedState.nfts[result.tokenId];
+          console.log(
+            `Sale completed: tokenId=${result.tokenId} nftIndex=${nft?.nftIndex ?? '?'}`,
+          );
+          void moltbookLoop.onEvent('nft_minted', `NFT #${nft?.nftIndex ?? '?'} minted`);
+        } catch (err) {
+          console.error(`Failed to complete sale ${match.saleId}:`, err);
+        }
+      }
+    },
   });
-  await moltbookLoop.initialize();
+  await usdcMonitor.start();
+  console.log(`[Boot] Base USDC monitor started (${baseNetwork})`);
 
   // Periodic market update posts
   setInterval(() => {
@@ -886,28 +698,8 @@ async function main(): Promise<void> {
     } catch {}
   }, 6 * 60 * 60 * 1000);
 
-  const paperTrading = db.config.get(CONFIG.PAPER_TRADING, {
-    envKey: 'PAPER_TRADING',
-    defaultValue: 'true',
-  }) === 'true';
-
-  const tradingLoop = new TradingLoop({
-    db,
-    adapter,
-    birdeye,
-    jupiter,
-    llmRouter,
-    connection,
-    cacheWriter,
-    personaCtx,
-    paperTrading,
-    onTradeExecuted: (context) => {
-      void xPostingLoop?.onEvent('trade_executed', context);
-      void moltbookLoop.onEvent('trade_executed', context);
-    },
-  });
-  tradingLoop.start();
-  console.log(`Trading loop started (paper trading: ${paperTrading})`);
+  // Trading disabled — will be re-enabled with 1inch on Base
+  console.log('[Boot] Trading disabled (pending 1inch Base integration)');
 
   const ticker = new AuctionTicker({ db, adapter, cacheWriter });
   ticker.start();
@@ -949,7 +741,7 @@ async function main(): Promise<void> {
         db.config.set(CONFIG.SECRETVM_BALANCE, String(balance));
         const usdcBalance = balance / 1_000_000;
         console.log(`[secretvm] Balance: ${usdcBalance.toFixed(2)} USDC`);
-        if (balance < 100_000) { // < 0.10 USDC
+        if (balance < 100_000) {
           console.log('[secretvm] Balance low, attempting auto top-up of 1 USDC...');
           try {
             await svm.addFunds(1);

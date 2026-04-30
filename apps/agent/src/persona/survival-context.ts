@@ -14,8 +14,7 @@ export function buildSurvivalContext(params: {
   dailyBurnRate: number;
   firstBootAt: number;
 }): SurvivalContext {
-  const totalUsdc =
-    params.balances.solanaUsdcBalance + params.balances.baseUsdcBalance;
+  const totalUsdc = params.balances.baseUsdcBalance;
   const estimatedRunwayDays =
     params.dailyBurnRate > 0 ? totalUsdc / params.dailyBurnRate : 999;
   const survivalState = computeSurvivalState(estimatedRunwayDays);
@@ -41,7 +40,7 @@ export function buildSurvivalContext(params: {
   );
 
   return {
-    solanaUsdcBalance: params.balances.solanaUsdcBalance,
+    solanaUsdcBalance: 0,
     baseUsdcBalance: params.balances.baseUsdcBalance,
     dailyBurnRateUsdc: params.dailyBurnRate,
     estimatedRunwayDays,

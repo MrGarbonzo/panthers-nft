@@ -2,8 +2,8 @@ export const CONFIG = {
   SECRET_AI_API_KEY: 'secret_ai_api_key',
   COINGECKO_API_KEY: 'coingecko_api_key',
 
-  SOLANA_RPC_URL: 'solana_rpc_url',
-  USDC_MINT: 'usdc_mint',
+  BASE_NETWORK: 'base_network',
+  USDC_ADDRESS: 'usdc_address',
 
   SECRET_AI_BASE_URL: 'secret_ai_base_url',
   PUBLIC_PORT: 'public_port',
@@ -21,7 +21,6 @@ export const CONFIG = {
   X_ACCESS_TOKEN_SECRET: 'x_access_token_secret',
 
   LLM_MODEL_ROUTING: 'llm_model_routing',
-  SOLANA_KEYPAIR: 'solana_keypair',
   NFT_PRICE_USDC: 'nft_price_usdc',
   ERC8004_TOKEN_ID: 'erc8004_token_id',
 

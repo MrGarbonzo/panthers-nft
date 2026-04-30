@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { computeSignals } from './indicators.js';
-import type { OhlcvCandle } from './birdeye.js';
+import type { OhlcvCandle } from './types.js';
 
 const candles: OhlcvCandle[] = [];
 for (let i = 0; i < 50; i++) {

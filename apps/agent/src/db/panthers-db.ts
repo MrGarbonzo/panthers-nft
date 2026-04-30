@@ -38,16 +38,6 @@ export class PanthersDb {
     }
   }
 
-  getSolanaKeypairBytes(): Uint8Array | null {
-    const value = this.config.get(CONFIG.SOLANA_KEYPAIR);
-    if (value === null) return null;
-    return new Uint8Array(Buffer.from(value, 'base64'));
-  }
-
-  setSolanaKeypairBytes(bytes: Uint8Array): void {
-    this.config.set(CONFIG.SOLANA_KEYPAIR, Buffer.from(bytes).toString('base64'));
-  }
-
   getFeePct(): number {
     const value = this.config.get(CONFIG.FEE_PCT_ON_BURN, {
       envKey: 'FEE_PCT_ON_BURN',

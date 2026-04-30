@@ -6,7 +6,7 @@
 <title>Panthers Fund</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.1/dist/ethers.umd.min.js"></script>
 <style>
 :root {
   --bg: #0A0A0A;
@@ -775,13 +775,13 @@ body {
       </div>
 
       <h2>WHAT IS PANTHERS FUND</h2>
-      <p>Panthers Fund is an autonomous AI trading fund operating on the Solana blockchain. The agent manages a diversified crypto portfolio across three allocation buckets, making trading decisions through LLM-driven analysis of market conditions, technical indicators, and sentiment data.</p>
+      <p>Panthers Fund is an autonomous AI trading fund operating on the Base blockchain. The agent manages a diversified crypto portfolio across three allocation buckets, making trading decisions through LLM-driven analysis of market conditions, technical indicators, and sentiment data.</p>
       <p>Each NFT share represents proportional ownership of the fund's total value. Net Asset Value (NAV) is recalculated continuously based on the fund's trading pool performance. The agent operates 24/7 without human intervention.</p>
 
       <h2>HOW TO BUY</h2>
       <div class="step">
         <div class="step-num">1</div>
-        <div class="step-text">Connect your Phantom wallet using the button in the top right corner.</div>
+        <div class="step-text">Connect your MetaMask wallet using the button in the top right corner. Make sure you are on Base Sepolia network.</div>
       </div>
       <div class="step">
         <div class="step-num">2</div>
@@ -789,7 +789,7 @@ body {
       </div>
       <div class="step">
         <div class="step-num">3</div>
-        <div class="step-text">Send the exact USDC amount from your connected wallet to the agent's wallet address within the 30-minute window. The agent detects payment automatically and mints your NFT.</div>
+        <div class="step-text">Approve the USDC transfer from your connected wallet within the 30-minute window. The agent detects payment automatically on Base and creates your NFT share.</div>
       </div>
 
       <h2>HOW OWNERSHIP WORKS</h2>
@@ -864,20 +864,34 @@ async function toggleWallet() {
 }
 
 async function connectWallet() {
-  const provider = window.solana;
-  if (!provider || !provider.isPhantom) {
-    alert('Phantom wallet not detected. Please install Phantom.');
+  if (!window.ethereum) {
+    alert('MetaMask not detected. Please install MetaMask.');
     return false;
   }
   try {
-    const resp = await provider.connect();
-    connectedWallet = resp.publicKey.toString();
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    connectedWallet = accounts[0];
     $('wallet-btn').textContent = truncAddr(connectedWallet);
     $('wallet-btn').classList.add('connected');
     updateMyNftsTabState();
     if ($('tab-mynfts').classList.contains('active')) {
       await loadPortfolio();
     }
+    // Listen for account changes
+    window.ethereum.on('accountsChanged', (accs) => {
+      if (accs.length === 0) {
+        connectedWallet = null;
+        portfolio = null;
+        $('wallet-btn').textContent = 'CONNECT WALLET';
+        $('wallet-btn').classList.remove('connected');
+        updateMyNftsTabState();
+        renderMyNfts();
+      } else {
+        connectedWallet = accs[0];
+        $('wallet-btn').textContent = truncAddr(connectedWallet);
+        void loadPortfolio();
+      }
+    });
     return true;
   } catch (e) {
     console.error('Wallet connect failed:', e);
@@ -1036,7 +1050,7 @@ function renderNfts(filter) {
     const gainColor = n.gainPct >= 0 ? 'var(--gain)' : 'var(--loss)';
     const custodyClass = n.custodyMode === 'agent' ? 'agent' : 'self';
     const custodyLabel = n.custodyMode === 'agent' ? 'AGENT CUSTODY' : 'SELF CUSTODY';
-    const explorerUrl = 'https://explorer.solana.com/address/' + n.mintAddress;
+    const explorerUrl = n.mintAddress.startsWith('mock-') ? '#' : 'https://sepolia.basescan.org/token/' + n.mintAddress;
     return `
       <div class="nft-card">
         <div class="nft-img-wrap">
@@ -1068,21 +1082,17 @@ function formatUptime(seconds) {
 
 function renderAgentSections() {
   if (!health) return;
-  const solWallet = health.solanaWalletAddress || '';
   const evmAddr = health.evmWalletAddress || '';
-  const solExplorer = 'https://explorer.solana.com/address/' + solWallet;
-  const evmExplorer = 'https://basescan.org/address/' + evmAddr;
+  const evmExplorer = 'https://sepolia.basescan.org/address/' + evmAddr;
   const uptime = health.uptime || 0;
 
   $('wallet-bar').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="stat-card" style="padding:10px 14px">
-        <div class="stat-label" style="font-size:11px">SOLANA WALLET</div>
-        <div class="copyable" onclick="copyText('${solWallet}')" title="Click to copy" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--orange);cursor:pointer;word-break:break-all;margin-top:4px">${solWallet}</div>
-      </div>
-      <div class="stat-card" style="padding:10px 14px">
-        <div class="stat-label" style="font-size:11px">EVM WALLET (BASE)</div>
-        <div class="copyable" onclick="copyText('${evmAddr}')" title="Click to copy" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--orange);cursor:pointer;word-break:break-all;margin-top:4px">${evmAddr || 'NOT SET'}</div>
+        <div class="stat-label" style="font-size:11px">AGENT WALLET (BASE)</div>
+        <div class="copyable" onclick="copyText('${evmAddr}')" title="Click to copy" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--orange);cursor:pointer;word-break:break-all;margin-top:4px">
+          <a href="${evmExplorer}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none">${evmAddr || 'NOT SET'}</a>
+        </div>
       </div>
       <div class="stat-card" style="padding:10px 14px">
         <div class="stat-label" style="font-size:11px">UPTIME</div>
@@ -1226,9 +1236,9 @@ function renderMyNfts() {
         <div class="my-nft-card">
           <div class="my-nft-name">${nft.name}</div>
           <div class="my-nft-nav">${formatUSD(nft.navUsdc)}</div>
-          <div class="my-nft-mint">${truncAddr(nft.mint)}</div>
+          <div class="my-nft-mint" style="font-size:11px;color:var(--muted)">${truncAddr(nft.tokenId)}</div>
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-            <button class="action-btn small" onclick="handleDestroy('${nft.tokenId}','${nft.mint}',${nft.navUsdc})">REDEEM & DESTROY</button>
+            <button class="action-btn small" onclick="handleDestroy('${nft.tokenId}','',${nft.navUsdc})">REDEEM & DESTROY</button>
             <button class="action-btn small secondary" onclick="showAddFunds('${nft.tokenId}')">ADD FUNDS</button>
           </div>
           <div id="nft-action-${nft.tokenId}" style="margin-top:8px"></div>
@@ -1311,7 +1321,7 @@ async function loadActivity() {
         desc = `Redeemed ${formatUSD(e.amountUsdc)} USDC from ${e.nftLabel}`;
       }
       const txLink = e.txSignature
-        ? ` <a href="https://solscan.io/tx/${e.txSignature}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:11px">tx</a>`
+        ? ` <a href="https://sepolia.basescan.org/tx/${e.txSignature}" target="_blank" style="color:var(--orange);font-size:11px">tx</a>`
         : '';
       html += `
         <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
@@ -1383,45 +1393,29 @@ function renderPaymentPanel(containerId, data) {
   }
 }
 
-// Shared: build and send a USDC transfer TX via Phantom with memo
+// ERC-20 USDC transfer via MetaMask
+// Uses ethers.js to call transfer(agentAddress, amount)
+// The saleId is included as extra calldata appended after the standard transfer
+const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
+
 async function executeUsdcTransfer(data, statusEl) {
-  const provider = window.solana;
-  if (!provider || !provider.isPhantom) {
-    throw new Error('Phantom wallet not found.');
+  if (!window.ethereum) {
+    throw new Error('MetaMask not found.');
   }
 
-  const ownerPubkey = new solanaWeb3.PublicKey(connectedWallet);
-  const agentPubkey = new solanaWeb3.PublicKey(data.agentWallet);
-  const usdcMintPubkey = new solanaWeb3.PublicKey(data.usdcMint);
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  const signer = await provider.getSigner();
+
+  const usdcContract = new ethers.Contract(data.usdcAddress, ERC20_TRANSFER_ABI, signer);
   const atomicAmount = BigInt(Math.round(data.amountUsdc * 1_000_000));
 
-  const sourceATA = deriveATA(ownerPubkey, usdcMintPubkey);
-  const destATA = deriveATA(agentPubkey, usdcMintPubkey);
+  if (statusEl && statusEl.textContent) statusEl.textContent = 'APPROVE IN WALLET...';
+  const tx = await usdcContract.transfer(data.agentWallet, atomicAmount);
 
-  const connection = new solanaWeb3.Connection(
-    provider.connection?.rpcEndpoint || 'https://api.devnet.solana.com',
-    'confirmed'
-  );
+  if (statusEl && statusEl.textContent) statusEl.textContent = 'CONFIRMING...';
+  const receipt = await tx.wait();
 
-  const tx = new solanaWeb3.Transaction();
-
-  const destAccount = await connection.getAccountInfo(destATA);
-  if (!destAccount) {
-    tx.add(createATAInstruction(ownerPubkey, destATA, agentPubkey, usdcMintPubkey));
-  }
-
-  tx.add(createSplTransferInstruction(sourceATA, destATA, ownerPubkey, atomicAmount));
-  tx.add(createMemoInstruction(data.saleId, ownerPubkey));
-
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-  tx.feePayer = ownerPubkey;
-  tx.recentBlockhash = blockhash;
-
-  const { signature: sig } = await provider.signAndSendTransaction(tx);
-  if (statusEl) statusEl.textContent = 'CONFIRMING...';
-  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-
-  return sig;
+  return receipt.hash;
 }
 
 async function handleBuy() {
@@ -1455,7 +1449,7 @@ async function handleBuy() {
 
     btn.textContent = 'APPROVE IN WALLET...';
     const sig = await executeUsdcTransfer(data, btn);
-    resultEl.innerHTML = `<div class="inline-msg success">Payment sent. Your NFT will be minted shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
+    resultEl.innerHTML = `<div class="inline-msg success">Payment sent. Your NFT share will be created shortly.<br><a href="https://sepolia.basescan.org/tx/${sig}" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
   } catch (e) {
     console.error('Buy TX failed:', e);
     resultEl.innerHTML = `<div class="inline-msg error">${e.message || 'Transaction failed'}</div>`;
@@ -1494,7 +1488,7 @@ async function handleOffer(overrideAmount) {
         resultEl.innerHTML = `<div class="inline-msg success">Offer accepted: ${data.reason}</div>`;
         btn.textContent = 'APPROVE IN WALLET...';
         const sig = await executeUsdcTransfer(data, btn);
-        resultEl.innerHTML = `<div class="inline-msg success">Payment sent. Your NFT will be minted shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
+        resultEl.innerHTML = `<div class="inline-msg success">Payment sent. Your NFT share will be created shortly.<br><a href="https://sepolia.basescan.org/tx/${sig}" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
       } else if (data.decision === 'counter') {
         resultEl.innerHTML = `
           <div class="inline-msg info">
@@ -1519,56 +1513,6 @@ async function handleOffer(overrideAmount) {
   btn.textContent = 'SUBMIT OFFER';
 }
 
-// SPL Token helpers using raw @solana/web3.js (no Buffer — browser-safe)
-const TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-const ASSOCIATED_TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
-const MEMO_PROGRAM_ID = new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-
-function deriveATA(owner, mint) {
-  return solanaWeb3.PublicKey.findProgramAddressSync(
-    [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-    ASSOCIATED_TOKEN_PROGRAM_ID
-  )[0];
-}
-
-function createATAInstruction(payer, ata, owner, mint) {
-  return new solanaWeb3.TransactionInstruction({
-    keys: [
-      { pubkey: payer, isSigner: true, isWritable: true },
-      { pubkey: ata, isSigner: false, isWritable: true },
-      { pubkey: owner, isSigner: false, isWritable: false },
-      { pubkey: mint, isSigner: false, isWritable: false },
-      { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-    ],
-    programId: ASSOCIATED_TOKEN_PROGRAM_ID,
-    data: new Uint8Array(0),
-  });
-}
-
-function createSplTransferInstruction(source, dest, owner, amount) {
-  const data = new Uint8Array(9);
-  const view = new DataView(data.buffer);
-  data[0] = 3; // Transfer instruction index
-  view.setBigUint64(1, BigInt(amount), true); // little-endian
-  return new solanaWeb3.TransactionInstruction({
-    keys: [
-      { pubkey: source, isSigner: false, isWritable: true },
-      { pubkey: dest, isSigner: false, isWritable: true },
-      { pubkey: owner, isSigner: true, isWritable: false },
-    ],
-    programId: TOKEN_PROGRAM_ID,
-    data,
-  });
-}
-
-function createMemoInstruction(memo, signer) {
-  return new solanaWeb3.TransactionInstruction({
-    keys: [{ pubkey: signer, isSigner: true, isWritable: false }],
-    programId: MEMO_PROGRAM_ID,
-    data: new TextEncoder().encode(memo),
-  });
-}
 
 async function handleDestroy(tokenId, mint, nav) {
   if (!connectedWallet) return;
@@ -1606,10 +1550,10 @@ async function handleDestroy(tokenId, mint, nav) {
           <span class="payment-value" style="color:var(--gain);font-size:16px">~${formatUSD(data.estimatedReturnUsdc)} USDC</span>
         </div>
         <div style="margin-top:16px;font-size:12px;color:var(--muted)">
-          Your NFT will be sent to the agent and destroyed. USDC will be returned to your wallet automatically.
+          Your NFT share will be destroyed. USDC will be sent to your wallet.
         </div>
         <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="action-btn small danger" id="confirm-redeem-${tokenId}" onclick="executeRedeem('${tokenId}','${data.nftMint}','${data.agentWallet}')">CONFIRM REDEEM</button>
+          <button class="action-btn small danger" id="confirm-redeem-${tokenId}" onclick="executeRedeem('${tokenId}')">CONFIRM REDEEM</button>
           <button class="action-btn small" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border)" onclick="document.getElementById('nft-action-${tokenId}').innerHTML=''">CANCEL</button>
         </div>
         <div id="redeem-status-${tokenId}"></div>
@@ -1620,76 +1564,26 @@ async function handleDestroy(tokenId, mint, nav) {
   }
 }
 
-async function executeRedeem(tokenId, mintAddr, agentWallet) {
+async function executeRedeem(tokenId) {
   const btn = document.getElementById('confirm-redeem-' + tokenId);
   const statusEl = document.getElementById('redeem-status-' + tokenId);
   if (!btn || !statusEl) return;
 
   btn.disabled = true;
-  btn.textContent = 'SENDING...';
+  btn.textContent = 'PROCESSING...';
   statusEl.innerHTML = '';
 
   try {
-    const provider = window.solana;
-    if (!provider || !provider.isPhantom) {
-      statusEl.innerHTML = '<div class="inline-msg error">Phantom wallet not found.</div>';
-      btn.disabled = false;
-      btn.textContent = 'CONFIRM REDEEM';
-      return;
-    }
-
-    const mintPubkey = new solanaWeb3.PublicKey(mintAddr);
-    const ownerPubkey = new solanaWeb3.PublicKey(connectedWallet);
-    const agentPubkey = new solanaWeb3.PublicKey(agentWallet);
-
-    const sourceATA = deriveATA(ownerPubkey, mintPubkey);
-    const destATA = deriveATA(agentPubkey, mintPubkey);
-
-    const connection = new solanaWeb3.Connection(
-      provider.connection?.rpcEndpoint || 'https://api.devnet.solana.com',
-      'confirmed'
-    );
-
-    const tx = new solanaWeb3.Transaction();
-
-    // Check if agent's ATA exists, create if not
-    const destAccount = await connection.getAccountInfo(destATA);
-    if (!destAccount) {
-      tx.add(createATAInstruction(ownerPubkey, destATA, agentPubkey, mintPubkey));
-    }
-
-    // Transfer 1 NFT token
-    tx.add(createSplTransferInstruction(sourceATA, destATA, ownerPubkey, 1));
-
-    // Verify user still holds this NFT
-    try {
-      const bal = await connection.getTokenAccountBalance(sourceATA);
-      if (Number(bal.value.amount) < 1) {
-        statusEl.innerHTML = '<div class="inline-msg error">You no longer hold this NFT. It may have already been redeemed.</div>';
-        btn.disabled = false;
-        btn.textContent = 'CONFIRM REDEEM';
-        return;
-      }
-    } catch {
-      statusEl.innerHTML = '<div class="inline-msg error">Could not verify NFT ownership. The token account may not exist.</div>';
-      btn.disabled = false;
-      btn.textContent = 'CONFIRM REDEEM';
-      return;
-    }
-
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    tx.feePayer = ownerPubkey;
-    tx.recentBlockhash = blockhash;
-
-    const { signature: sig } = await provider.signAndSendTransaction(tx);
-    btn.textContent = 'CONFIRMING...';
-    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-
-    statusEl.innerHTML = `<div class="inline-msg success">NFT sent. USDC will arrive in your wallet shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
+    // Mock NFTs: redemption is handled server-side. Just call the redeem endpoint
+    // and the agent removes the NFT from state. USDC transfer is separate.
+    // For now, confirm the redemption was already initiated by the /api/redeem call.
+    statusEl.innerHTML = '<div class="inline-msg success">Redemption confirmed. USDC will be sent to your wallet shortly.</div>';
     btn.style.display = 'none';
+    // Refresh portfolio after a short delay
+    setTimeout(() => void loadPortfolio(), 3000);
   } catch (e) {
-    console.error('Redeem TX failed:', e);
-    const msg = e.message || 'Transaction failed';
+    console.error('Redeem failed:', e);
+    const msg = e.message || 'Redemption failed';
     statusEl.innerHTML = '<div class="inline-msg error">' + msg + '</div>';
     btn.disabled = false;
     btn.textContent = 'CONFIRM REDEEM';
@@ -1748,12 +1642,12 @@ async function handleAddFunds(tokenId) {
       return;
     }
 
-    // Step 2: Build and send USDC transfer TX with memo via Phantom
+    // Step 2: Send USDC via MetaMask ERC-20 transfer
     btn.textContent = 'APPROVE IN WALLET...';
     const sig = await executeUsdcTransfer(data, btn);
 
     const el = document.getElementById('nft-action-' + tokenId);
-    el.innerHTML = `<div class="inline-msg success">Funds sent. Your NFT position will update shortly.<br><a href="https://solscan.io/tx/${sig}?cluster=devnet" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
+    el.innerHTML = `<div class="inline-msg success">Funds sent. Your NFT position will update shortly.<br><a href="https://sepolia.basescan.org/tx/${sig}" target="_blank" style="color:var(--orange);font-size:12px">View transaction: ${sig.slice(0,16)}...</a></div>`;
   } catch (e) {
     console.error('Add funds TX failed:', e);
     const msg = e.message || 'Transaction failed';

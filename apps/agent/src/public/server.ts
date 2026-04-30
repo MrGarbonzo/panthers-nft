@@ -2,8 +2,6 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { readFileSync, existsSync, createReadStream } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Connection, PublicKey } from '@solana/web3.js';
-import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { v4 as uuidv4 } from 'uuid';
 import type { PublicCacheWriter } from './cache.js';
 import type { PanthersDb } from '../db/panthers-db.js';
@@ -12,6 +10,7 @@ import type { LLMRouter } from '../llm/router.js';
 import type { PersonaContextProvider } from '../persona/context-provider.js';
 import { evaluateOffer, type OfferEvaluation } from '../llm/tasks.js';
 import { CONFIG } from '../db/config-keys.js';
+import { getUsdcAddress } from '../base/rpc.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -38,9 +37,12 @@ const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="500" hei
 
 const BUY_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
 
+function isValidEvmAddress(addr: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(addr);
+}
+
 export interface PublicBalanceServerParams {
   cacheWriter: PublicCacheWriter;
-  connection?: Connection;
   db?: PanthersDb;
   adapter?: PanthersStateAdapter;
   llmRouter?: LLMRouter;
@@ -50,7 +52,6 @@ export interface PublicBalanceServerParams {
   startedAt?: number;
   nftImagesDir?: string;
   storageBackend?: string;
-  solanaWalletAddress?: string;
   evmWalletAddress?: string;
 }
 
@@ -63,7 +64,6 @@ export class PublicBalanceServer {
   private readonly devMode: boolean;
   private readonly nftImagesDir: string;
   private readonly storageBackend: string;
-  private readonly solanaWalletAddress: string;
   private readonly evmWalletAddress: string;
 
   constructor(private readonly params: PublicBalanceServerParams) {
@@ -72,7 +72,6 @@ export class PublicBalanceServer {
     this.devMode = params.devMode ?? false;
     this.nftImagesDir = params.nftImagesDir ?? '/data/nft-images';
     this.storageBackend = params.storageBackend ?? 'simple';
-    this.solanaWalletAddress = params.solanaWalletAddress ?? '';
     this.evmWalletAddress = params.evmWalletAddress ?? '';
   }
 
@@ -175,7 +174,6 @@ export class PublicBalanceServer {
           poolValueUsdc: cache?.fundSummary.totalPoolValueUsdc ?? 0,
           devMode: this.devMode,
           storageBackend: this.storageBackend,
-          solanaWalletAddress: this.solanaWalletAddress,
           evmWalletAddress: this.evmWalletAddress,
           personalFund: cache?.stats?.personalFund ?? null,
           timestamp: Date.now(),
@@ -278,7 +276,7 @@ export class PublicBalanceServer {
         this.respondJson(res, status, {
           name: nft.name,
           symbol: 'PANTH',
-          description: 'Panthers Fund — an autonomous AI trading fund on Solana.',
+          description: 'Panthers Fund — an autonomous AI trading fund on Base.',
           image: `${protocol}://${host}/nft-image/${tokenId}`,
           external_url: `${protocol}://${host}/`,
           attributes: [],
@@ -335,54 +333,27 @@ export class PublicBalanceServer {
   }
 
   private async handlePortfolio(walletAddr: string): Promise<{ status: number; body: unknown }> {
-    let walletPubkey: PublicKey;
-    try {
-      walletPubkey = new PublicKey(walletAddr);
-      if (!PublicKey.isOnCurve(walletPubkey.toBytes())) throw new Error();
-    } catch {
+    if (!isValidEvmAddress(walletAddr)) {
       return { status: 400, body: { error: 'invalid wallet address' } };
     }
 
-    const conn = this.params.connection;
-    if (!conn) {
-      return { status: 503, body: { error: 'Solana connection not available' } };
+    const db = this.params.db;
+    const adapter = this.params.adapter;
+    if (!db || !adapter) {
+      return { status: 503, body: { error: 'Database not available' } };
     }
 
-    const cache = await this.params.cacheWriter.read();
-    if (!cache) {
-      return { status: 503, body: { error: 'Cache not initialized' } };
-    }
-
-    const allNfts = Object.values(cache.byMint);
-    if (allNfts.length === 0) {
-      return {
-        status: 200,
-        body: { walletAddress: walletAddr, nfts: [], totalNavUsdc: 0, nftCount: 0 },
-      };
-    }
-
-    const ownershipChecks = allNfts.map(async (nft) => {
-      try {
-        const mintPubkey = new PublicKey(nft.mintAddress);
-        const ata = getAssociatedTokenAddressSync(mintPubkey, walletPubkey);
-        const balance = await conn.getTokenAccountBalance(ata);
-        const amount = Number(balance.value.amount);
-        if (amount > 0) return nft;
-      } catch {
-        // ATA doesn't exist or RPC error — wallet doesn't hold this mint
-      }
-      return null;
-    });
-
-    const results = await Promise.all(ownershipChecks);
-    const owned = results.filter((r) => r !== null);
+    const state = await db.loadState(adapter);
+    const allNfts = Object.values(state.nfts);
+    const owned = allNfts.filter(
+      (nft) => nft.ownerWallet.toLowerCase() === walletAddr.toLowerCase(),
+    );
 
     const nfts = owned.map((nft) => ({
       tokenId: nft.tokenId,
-      mint: nft.mintAddress,
-      name: nft.name,
+      name: `Panthers #${nft.nftIndex}`,
       acquiredAt: new Date(nft.mintedAt).toISOString(),
-      navUsdc: nft.navUsdc,
+      navUsdc: nft.currentNav,
     }));
 
     const totalNavUsdc = nfts.reduce((sum, n) => sum + n.navUsdc, 0);
@@ -464,10 +435,7 @@ export class PublicBalanceServer {
       return { status: 400, body: { error: 'walletAddress is required' } };
     }
 
-    try {
-      const pk = new PublicKey(walletAddress);
-      if (!PublicKey.isOnCurve(pk.toBytes())) throw new Error();
-    } catch {
+    if (!isValidEvmAddress(walletAddress)) {
       return { status: 400, body: { error: 'Invalid wallet address' } };
     }
 
@@ -486,7 +454,7 @@ export class PublicBalanceServer {
         body: {
           error: 'pending_sale_exists',
           expiresAt: new Date(existing.expiresAt).toISOString(),
-          agentWallet: this.solanaWalletAddress,
+          agentWallet: this.evmWalletAddress,
           amountUsdc: existing.agreedPriceUsdc,
         },
       };
@@ -517,10 +485,10 @@ export class PublicBalanceServer {
     };
     await db.saveState(nextState, adapter, this.params.cacheWriter);
 
-    const usdcMint = db.config.get(CONFIG.USDC_MINT, {
-      envKey: 'USDC_MINT',
-      defaultValue: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    })!;
+    const baseNetwork = (db.config.get(CONFIG.BASE_NETWORK, {
+      defaultValue: 'base-sepolia',
+    }) ?? 'base-sepolia') as 'base' | 'base-sepolia';
+    const usdcAddr = getUsdcAddress(baseNetwork);
 
     console.log(
       `[Buy] Created pending sale ${saleId} for ${walletAddress.slice(0, 8)}... amount=${amountUsdc} USDC`,
@@ -530,8 +498,8 @@ export class PublicBalanceServer {
       status: 200,
       body: {
         saleId,
-        agentWallet: this.solanaWalletAddress,
-        usdcMint,
+        agentWallet: this.evmWalletAddress,
+        usdcAddress: usdcAddr,
         amountUsdc,
         expiresAt: new Date(expiresAt).toISOString(),
       },
@@ -557,10 +525,7 @@ export class PublicBalanceServer {
       return { status: 400, body: { error: 'walletAddress is required' } };
     }
 
-    try {
-      const pk = new PublicKey(walletAddress);
-      if (!PublicKey.isOnCurve(pk.toBytes())) throw new Error();
-    } catch {
+    if (!isValidEvmAddress(walletAddress)) {
       return { status: 400, body: { error: 'Invalid wallet address' } };
     }
 
@@ -584,7 +549,7 @@ export class PublicBalanceServer {
         body: {
           error: 'pending_sale_exists',
           expiresAt: new Date(existing.expiresAt).toISOString(),
-          agentWallet: this.solanaWalletAddress,
+          agentWallet: this.evmWalletAddress,
           amountUsdc: existing.agreedPriceUsdc,
         },
       };
@@ -667,10 +632,10 @@ export class PublicBalanceServer {
       };
       await db.saveState(nextState, adapter, this.params.cacheWriter);
 
-      const usdcMintOffer = db.config.get(CONFIG.USDC_MINT, {
-        envKey: 'USDC_MINT',
-        defaultValue: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-      })!;
+      const baseNetworkOffer = (db.config.get(CONFIG.BASE_NETWORK, {
+        defaultValue: 'base-sepolia',
+      }) ?? 'base-sepolia') as 'base' | 'base-sepolia';
+      const usdcAddrOffer = getUsdcAddress(baseNetworkOffer);
 
       return {
         status: 200,
@@ -678,8 +643,8 @@ export class PublicBalanceServer {
           decision: 'accept',
           saleId,
           amountUsdc: offerAmountUsdc,
-          agentWallet: this.solanaWalletAddress,
-          usdcMint: usdcMintOffer,
+          agentWallet: this.evmWalletAddress,
+          usdcAddress: usdcAddrOffer,
           expiresAt: new Date(expiresAt).toISOString(),
           reason: evaluation.reason,
         },
@@ -751,12 +716,12 @@ export class PublicBalanceServer {
     return {
       status: 200,
       body: {
-        agentWallet: this.solanaWalletAddress,
-        nftMint: nft.mintAddress,
+        agentWallet: this.evmWalletAddress,
+        tokenId,
         currentNav: nft.currentNav,
         feePct,
         estimatedReturnUsdc,
-        instructions: `Send your NFT (mint: ${nft.mintAddress}) to ${this.solanaWalletAddress}. You will receive approximately ${estimatedReturnUsdc} USDC back automatically. A ${(feePct * 100).toFixed(0)}% fee is deducted for agent infrastructure.`,
+        instructions: `Click confirm to redeem Panthers #${nft.nftIndex}. You will receive approximately ${estimatedReturnUsdc} USDC back. A ${(feePct * 100).toFixed(0)}% fee is deducted for agent infrastructure.`,
       },
     };
   }
@@ -786,10 +751,7 @@ export class PublicBalanceServer {
       return { status: 400, body: { error: 'amountUsdc must be a positive number' } };
     }
 
-    try {
-      const pk = new PublicKey(walletAddress);
-      if (!PublicKey.isOnCurve(pk.toBytes())) throw new Error();
-    } catch {
+    if (!isValidEvmAddress(walletAddress)) {
       return { status: 400, body: { error: 'Invalid wallet address' } };
     }
 
@@ -815,7 +777,7 @@ export class PublicBalanceServer {
         body: {
           error: 'pending_sale_exists',
           expiresAt: new Date(existing.expiresAt).toISOString(),
-          agentWallet: this.solanaWalletAddress,
+          agentWallet: this.evmWalletAddress,
           amountUsdc: existing.agreedPriceUsdc,
         },
       };
@@ -842,10 +804,10 @@ export class PublicBalanceServer {
     };
     await db.saveState(nextState, adapter, this.params.cacheWriter);
 
-    const usdcMint = db.config.get(CONFIG.USDC_MINT, {
-      envKey: 'USDC_MINT',
-      defaultValue: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    })!;
+    const baseNetworkAf = (db.config.get(CONFIG.BASE_NETWORK, {
+      defaultValue: 'base-sepolia',
+    }) ?? 'base-sepolia') as 'base' | 'base-sepolia';
+    const usdcAddrAf = getUsdcAddress(baseNetworkAf);
 
     console.log(
       `[AddFunds] Created pending add-funds ${saleId} for ${walletAddress.slice(0, 8)}... tokenId=${tokenId} amount=${amountUsdc} USDC`,
@@ -855,8 +817,8 @@ export class PublicBalanceServer {
       status: 200,
       body: {
         saleId,
-        agentWallet: this.solanaWalletAddress,
-        usdcMint,
+        agentWallet: this.evmWalletAddress,
+        usdcAddress: usdcAddrAf,
         amountUsdc,
         expiresAt: new Date(expiresAt).toISOString(),
       },
