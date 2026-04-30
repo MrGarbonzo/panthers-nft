@@ -1407,7 +1407,10 @@ async function executeUsdcTransfer(data, statusEl) {
   }
 
   const provider = new ethers.BrowserProvider(window.ethereum);
-  const signer = await provider.getSigner();
+  // Use the connected wallet address to ensure we sign with the right account
+  const signer = connectedWallet
+    ? await provider.getSigner(connectedWallet)
+    : await provider.getSigner();
 
   const usdcContract = new ethers.Contract(data.usdcAddress, ERC20_TRANSFER_ABI, signer);
   const atomicAmount = BigInt(Math.round(data.amountUsdc * 1_000_000));
