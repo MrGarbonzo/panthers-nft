@@ -1160,14 +1160,14 @@ function renderAgentSections() {
         <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--gain);margin-left:auto">ARMED</span>
       </div>
       <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
-        <span style="width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block"></span>
+        <span style="width:6px;height:6px;border-radius:50%;background:${health.guardianCount > 0 ? 'var(--gain)' : 'var(--muted)'};display:inline-block"></span>
         <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">GUARDIAN NODES</span>
-        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto">${health.storageBackend === 'idiostasis' ? '2' : '0'}</span>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:${health.guardianCount > 0 ? 'var(--gain)' : 'var(--muted)'};margin-left:auto">${health.guardianCount ?? 0}</span>
       </div>
       <div class="stat-card" style="padding:8px 14px;display:inline-flex;align-items:center;gap:8px;flex:1;min-width:140px">
-        <span style="width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block"></span>
+        <span style="width:6px;height:6px;border-radius:50%;background:${health.backupAgentCount > 0 ? 'var(--gain)' : 'var(--muted)'};display:inline-block"></span>
         <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);letter-spacing:1px">BACKUP AGENTS</span>
-        <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto">0</span>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:${health.backupAgentCount > 0 ? 'var(--gain)' : 'var(--muted)'};margin-left:auto">${health.backupAgentCount ?? 0}</span>
       </div>
     </div>
     <div id="trading-status-bar" style="margin-top:8px"></div>

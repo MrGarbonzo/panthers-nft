@@ -42,6 +42,11 @@ function isValidEvmAddress(addr: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
 
+export interface ProtocolDbReader {
+  listGuardians(status?: string): { id: string; status: string }[];
+  listBackupAgents(status?: string): { id: string; status: string }[];
+}
+
 export interface PublicBalanceServerParams {
   cacheWriter: PublicCacheWriter;
   db?: PanthersDb;
@@ -54,6 +59,7 @@ export interface PublicBalanceServerParams {
   nftImagesDir?: string;
   storageBackend?: string;
   evmWalletAddress?: string;
+  protocolDb?: ProtocolDbReader;
 }
 
 const DEFAULT_PORT = 8080;
@@ -79,6 +85,10 @@ export class PublicBalanceServer {
   setLlmDependencies(llmRouter: LLMRouter, personaCtx: PersonaContextProvider): void {
     this.params.llmRouter = llmRouter;
     this.params.personaCtx = personaCtx;
+  }
+
+  setProtocolDb(protocolDb: ProtocolDbReader): void {
+    this.params.protocolDb = protocolDb;
   }
 
   start(): void {
@@ -174,6 +184,15 @@ export class PublicBalanceServer {
 
       if (urlPath === '/health') {
         const cache = await this.params.cacheWriter.read();
+        const pdb = this.params.protocolDb;
+        let guardianCount = 0;
+        let backupAgentCount = 0;
+        if (pdb) {
+          try {
+            guardianCount = pdb.listGuardians('active').length;
+            backupAgentCount = pdb.listBackupAgents('active').length;
+          } catch {}
+        }
         this.respondJson(res, status, {
           status: 'ok',
           uptime: Math.floor((Date.now() - this.startedAt) / 1000),
@@ -182,6 +201,8 @@ export class PublicBalanceServer {
           devMode: this.devMode,
           storageBackend: this.storageBackend,
           evmWalletAddress: this.evmWalletAddress,
+          guardianCount,
+          backupAgentCount,
           personalFund: cache?.stats?.personalFund ?? null,
           timestamp: Date.now(),
         });

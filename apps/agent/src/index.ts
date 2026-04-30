@@ -366,6 +366,9 @@ async function main(): Promise<void> {
       await protocolServer.start(protocolPort);
       console.log(`[protocol] Protocol server listening on :${protocolPort}`);
 
+      // Expose guardian/backup counts to the public dashboard
+      publicServer.setProtocolDb(protocolDb as any);
+
       // Start heartbeat
       const pingTransport = async (target: string, envelope: any): Promise<boolean> => {
         const url = target.startsWith('http') ? `${target}/ping` : `http://${target}/ping`;
