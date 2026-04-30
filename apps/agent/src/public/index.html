@@ -852,13 +852,6 @@ function copyText(text) {
 // Wallet connection
 async function toggleWallet() {
   if (connectedWallet) {
-    // Revoke permissions so next connect shows account picker
-    try {
-      await window.ethereum.request({
-        method: 'wallet_revokePermissions',
-        params: [{ eth_accounts: {} }],
-      });
-    } catch {}
     connectedWallet = null;
     portfolio = null;
     $('wallet-btn').textContent = 'CONNECT WALLET';
@@ -870,17 +863,30 @@ async function toggleWallet() {
   await connectWallet();
 }
 
+async function switchAccount() {
+  if (!window.ethereum) return;
+  try {
+    await window.ethereum.request({
+      method: 'wallet_requestPermissions',
+      params: [{ eth_accounts: {} }],
+    });
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    if (accounts[0]) {
+      connectedWallet = accounts[0];
+      $('wallet-btn').textContent = truncAddr(connectedWallet);
+      void loadPortfolio();
+    }
+  } catch (e) {
+    console.error('Switch account failed:', e);
+  }
+}
+
 async function connectWallet() {
   if (!window.ethereum) {
     alert('MetaMask not detected. Please install MetaMask.');
     return false;
   }
   try {
-    // Force account picker to show so user selects the right account
-    await window.ethereum.request({
-      method: 'wallet_requestPermissions',
-      params: [{ eth_accounts: {} }],
-    });
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
     connectedWallet = accounts[0];
     $('wallet-btn').textContent = truncAddr(connectedWallet);
@@ -1238,6 +1244,7 @@ function renderMyNfts() {
         <div class="stat-label">WALLET</div>
         <div class="stat-value" style="font-size:18px">${truncAddr(connectedWallet)}</div>
         <div class="stat-sub" style="font-family:'Space Mono',monospace;font-size:11px">${connectedWallet}</div>
+        <button class="action-btn small secondary" style="margin-top:8px;font-size:10px;padding:4px 10px" onclick="switchAccount()">SWITCH ACCOUNT</button>
       </div>
     </div>
   `;
