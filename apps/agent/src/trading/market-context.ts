@@ -182,8 +182,14 @@ export class MarketContext {
         const text = await res.text();
         let price = 0;
         try {
-          const data = JSON.parse(text) as { price?: string; pair?: string };
-          price = Number(data.price ?? 0);
+          const data = JSON.parse(text) as { price?: string; canonical?: string; pair?: string };
+          if (data.price) {
+            price = Number(data.price);
+          } else if (data.canonical) {
+            // Mycelia canonical format: v1|PRICE|ETHUSD|2260.58|USD|2|sources...|method|timestamp|nonce
+            const parts = data.canonical.split('|');
+            price = Number(parts[3] ?? 0);
+          }
         } catch {
           console.error(`[market] Mycelia parse error for ${coinId}: ${text.slice(0, 200)}`);
         }
