@@ -792,8 +792,8 @@ async function main(): Promise<void> {
       } catch (err) {
         console.error('[trading] Loop error:', err);
       }
-    }, 60 * 60 * 1000);
-    console.log('[Boot] Trading loop armed (hourly heartbeat)');
+    }, 2 * 60 * 60 * 1000);
+    console.log('[Boot] Trading loop armed (2-hour heartbeat)');
   } else {
     console.log('[Boot] Trading loop skipped — no market context');
   }

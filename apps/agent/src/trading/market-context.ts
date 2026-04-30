@@ -1,8 +1,8 @@
 import { TRADING_TOKENS } from './tokens.js';
 
-const DEFAULT_REFRESH_MS = 5 * 60 * 1000;
-const SENTIMENT_REFRESH_MS = 30 * 60 * 1000; // 30 min
-const NEWS_REFRESH_MS = 60 * 60 * 1000; // 60 min
+const DEFAULT_REFRESH_MS = 30 * 60 * 1000; // 30 min — Mycelia price polls
+const SENTIMENT_REFRESH_MS = 6 * 60 * 60 * 1000; // 6 hours — GenVox sentiment
+const NEWS_REFRESH_MS = 6 * 60 * 60 * 1000; // 6 hours — Gloria news
 
 export interface CoinSnapshot {
   priceUsd: number;
