@@ -852,6 +852,13 @@ function copyText(text) {
 // Wallet connection
 async function toggleWallet() {
   if (connectedWallet) {
+    // Revoke permissions so next connect shows account picker
+    try {
+      await window.ethereum.request({
+        method: 'wallet_revokePermissions',
+        params: [{ eth_accounts: {} }],
+      });
+    } catch {}
     connectedWallet = null;
     portfolio = null;
     $('wallet-btn').textContent = 'CONNECT WALLET';
@@ -869,6 +876,11 @@ async function connectWallet() {
     return false;
   }
   try {
+    // Force account picker to show so user selects the right account
+    await window.ethereum.request({
+      method: 'wallet_requestPermissions',
+      params: [{ eth_accounts: {} }],
+    });
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
     connectedWallet = accounts[0];
     $('wallet-btn').textContent = truncAddr(connectedWallet);
