@@ -189,8 +189,18 @@ export class PublicBalanceServer {
         let backupAgentCount = 0;
         if (pdb) {
           try {
-            guardianCount = pdb.listGuardians('active').length;
-            backupAgentCount = pdb.listBackupAgents('active').length;
+            // Only count guardians/backups seen within the last 5 minutes as truly active
+            const staleThreshold = Date.now() - (5 * 60 * 1000);
+            guardianCount = pdb.listGuardians('active')
+              .filter((g: any) => {
+                const lastSeen = g.lastSeenAt instanceof Date ? g.lastSeenAt.getTime() : Number(g.lastSeenAt ?? 0);
+                return lastSeen > staleThreshold;
+              }).length;
+            backupAgentCount = pdb.listBackupAgents('active')
+              .filter((b: any) => {
+                const lastSeen = b.lastSeenAt instanceof Date ? b.lastSeenAt.getTime() : Number(b.lastSeenAt ?? 0);
+                return lastSeen > staleThreshold;
+              }).length;
           } catch {}
         }
         this.respondJson(res, status, {
