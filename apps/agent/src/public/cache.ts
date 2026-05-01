@@ -53,6 +53,8 @@ export interface PublicFundStats {
   liquidUsdcBalance: number;
   performancePct: number;
   totalNftCount: number;
+  totalNftsMinted: number;
+  totalNftsDestroyed: number;
   avgNavUsdc: number;
   allocations: {
     coreUsdc: number;
@@ -111,6 +113,9 @@ export class PublicCacheWriter {
     }
 
     const totalNftCount = nfts.length;
+    const activityLog = state.activityLog ?? [];
+    const totalNftsMinted = activityLog.filter((a) => a.type === 'purchase').length;
+    const totalNftsDestroyed = activityLog.filter((a) => a.type === 'redeem' || a.type === 'withdrawal').length;
     const avgNavUsdc =
       totalNftCount > 0
         ? nfts.reduce((sum, n) => sum + n.currentNav, 0) / totalNftCount
@@ -166,6 +171,8 @@ export class PublicCacheWriter {
         liquidUsdcBalance: state.liquidUsdcBalance ?? 0,
         performancePct: state.signals.lastPoolPerformancePct,
         totalNftCount,
+        totalNftsMinted,
+        totalNftsDestroyed,
         avgNavUsdc,
         allocations: {
           coreUsdc: alloc.coreValueUsdc,

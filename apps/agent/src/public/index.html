@@ -1123,11 +1123,18 @@ function renderAgentSections() {
   const perf = stats ? formatPct(stats.performancePct) : '—';
 
   $('agent-ops').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
       <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">TVL</div>
         <div class="stat-value" style="font-size:22px">${tvl}</div>
         <div class="stat-sub">Total Value Locked</div>
+      </div>
+      <div class="stat-card" style="padding:14px 16px;text-align:center">
+        <div class="stat-label">TOTAL NFTS</div>
+        <div class="stat-value" style="font-size:22px">${stats?.totalNftCount ?? 0}</div>
+        <div class="stat-sub" style="font-size:11px;font-family:'Space Mono',monospace;margin-top:4px">
+          ${stats?.totalNftsMinted ?? 0} sold &middot; ${stats?.totalNftsDestroyed ?? 0} destroyed &middot; ${stats?.totalNftCount ?? 0} active
+        </div>
       </div>
       <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">PERFORMANCE</div>
