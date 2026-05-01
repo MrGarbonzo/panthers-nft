@@ -801,7 +801,9 @@ async function main(): Promise<void> {
     const runTradingEval = async () => {
       try {
         // Sync wallet balance before evaluating
-        const bal = walletMonitor.getBalances().baseUsdcBalance;
+        const balances = walletMonitor.getBalances();
+        const bal = balances.baseUsdcBalance;
+        console.log(`[trading] WalletMonitor balance: ${bal} USDC (updated ${Math.round((Date.now() - balances.baseBalanceUpdatedAt) / 1000)}s ago)`);
         const currentState = await db.loadState(adapter);
         if (currentState.liquidUsdcBalance !== bal) {
           await db.saveState({ ...currentState, liquidUsdcBalance: bal }, adapter, cacheWriter);
