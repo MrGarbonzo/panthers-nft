@@ -19,8 +19,8 @@ export interface SecretVmClient {
 }
 
 export class AutonomousGuardianManager {
-  private static readonly STARTUP_DELAY_MS = 30 * 60 * 1000;
-  private static readonly DEFICIT_DELAY_MS = 10 * 60 * 1000;
+  private static readonly STARTUP_DELAY_MS = 2 * 60 * 1000; // TODO: restore to 30 min after testing
+  private static readonly DEFICIT_DELAY_MS = 2 * 60 * 1000; // TODO: restore to 10 min after testing
 
   private readonly db: ProtocolDatabase;
   private readonly config: ProtocolConfig;
