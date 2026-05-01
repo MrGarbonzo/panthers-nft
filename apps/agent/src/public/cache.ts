@@ -170,13 +170,13 @@ export class PublicCacheWriter {
         allocations: {
           coreUsdc: alloc.coreValueUsdc,
           top10Usdc: alloc.top10ValueUsdc,
-          speculativeUsdc: alloc.speculativeValueUsdc ?? alloc.llmValueUsdc ?? 0,
+          speculativeUsdc: alloc.speculativeValueUsdc,
           corePct: totalPoolValueUsdc > 0
             ? (alloc.coreValueUsdc / totalPoolValueUsdc) * 100 : 0,
           top10Pct: totalPoolValueUsdc > 0
             ? (alloc.top10ValueUsdc / totalPoolValueUsdc) * 100 : 0,
           speculativePct: totalPoolValueUsdc > 0
-            ? ((alloc.speculativeValueUsdc ?? alloc.llmValueUsdc ?? 0) / totalPoolValueUsdc) * 100 : 0,
+            ? (alloc.speculativeValueUsdc / totalPoolValueUsdc) * 100 : 0,
         },
         openPositions,
         recentTrades,
