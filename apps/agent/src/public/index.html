@@ -816,6 +816,20 @@ let stats = null;
 let health = null;
 let hasError = false;
 let connectedWallet = null;
+
+// Find MetaMask provider — when multiple wallets are installed (Phantom, Coinbase, etc.)
+// they all inject into window.ethereum. We need the real MetaMask.
+function getMetaMaskProvider() {
+  if (window.ethereum?.providers) {
+    const mm = window.ethereum.providers.find(p => p.isMetaMask && !p.isPhantom);
+    if (mm) return mm;
+  }
+  if (window.ethereum?.isMetaMask && !window.ethereum?.isPhantom) {
+    return window.ethereum;
+  }
+  // Fallback to whatever is available
+  return window.ethereum;
+}
 let portfolio = null;
 let buyExpiryInterval = null;
 let offerExpiryInterval = null;
@@ -867,12 +881,13 @@ async function toggleWallet() {
 }
 
 async function connectWallet() {
-  if (!window.ethereum) {
+  const provider = getMetaMaskProvider();
+  if (!provider) {
     alert('MetaMask not detected. Please install MetaMask.');
     return false;
   }
   try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
     if (!accounts || accounts.length === 0) return false;
     connectedWallet = accounts[0];
     $('wallet-btn').textContent = truncAddr(connectedWallet);
@@ -1391,10 +1406,10 @@ function renderPaymentPanel(containerId, data) {
 const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
 async function executeUsdcTransfer(data, statusEl) {
-  if (!window.ethereum) throw new Error('MetaMask not found.');
+  const provider = getMetaMaskProvider();
+  if (!provider) throw new Error('MetaMask not found.');
   if (!connectedWallet) throw new Error('No wallet connected.');
 
-  // Use the wallet address that was selected during connectWallet()
   const from = connectedWallet;
 
   // Build ERC-20 transfer(address,uint256) calldata
@@ -1405,15 +1420,15 @@ async function executeUsdcTransfer(data, statusEl) {
 
   if (statusEl && statusEl.textContent) statusEl.textContent = 'APPROVE IN WALLET...';
 
-  const txHash = await window.ethereum.request({
+  const txHash = await provider.request({
     method: 'eth_sendTransaction',
     params: [{ from, to: data.usdcAddress, data: calldata }],
   });
 
   if (statusEl && statusEl.textContent) statusEl.textContent = 'CONFIRMING...';
 
-  const provider = new ethers.BrowserProvider(window.ethereum);
-  await provider.waitForTransaction(txHash);
+  const ethProvider = new ethers.BrowserProvider(provider);
+  await ethProvider.waitForTransaction(txHash);
   return txHash;
 }
 
@@ -2017,8 +2032,9 @@ updateMyNftsTabState();
 renderMyNfts();
 
 // MetaMask: listen for account changes from page load
-if (window.ethereum) {
-  window.ethereum.on('accountsChanged', (accs) => {
+const mmProvider = getMetaMaskProvider();
+if (mmProvider) {
+  mmProvider.on('accountsChanged', (accs) => {
     if (accs.length === 0) {
       connectedWallet = null;
       portfolio = null;
@@ -2036,7 +2052,7 @@ if (window.ethereum) {
   });
 
   // Auto-reconnect if MetaMask already has a connected account
-  window.ethereum.request({ method: 'eth_accounts' }).then((accs) => {
+  mmProvider.request({ method: 'eth_accounts' }).then((accs) => {
     if (accs && accs.length > 0) {
       connectedWallet = accs[0];
       $('wallet-btn').textContent = truncAddr(connectedWallet);
