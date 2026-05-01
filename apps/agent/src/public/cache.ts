@@ -117,7 +117,20 @@ export class PublicCacheWriter {
         : 0;
 
     const totalPoolValueUsdc = state.pool.totalUsdcCurrentValue;
-    const alloc = state.pool.allocations;
+    // Recompute allocations from actual open positions
+    let coreValue = 0, top10Value = 0, specValue = 0;
+    for (const p of state.pool.openPositions) {
+      const val = p.entryPrice * p.size;
+      if (p.bucket === 'core') coreValue += val;
+      else if (p.bucket === 'top10') top10Value += val;
+      else if (p.bucket === 'speculative') specValue += val;
+    }
+    const alloc = {
+      coreValueUsdc: coreValue,
+      top10ValueUsdc: top10Value,
+      speculativeValueUsdc: specValue,
+      lastRebalancedAt: state.pool.allocations.lastRebalancedAt,
+    };
     const openPositions: PublicPosition[] = state.pool.openPositions.map((p) => ({
       tokenMint: p.tokenMint,
       bucket: p.bucket,
