@@ -468,6 +468,21 @@ async function main(): Promise<void> {
           protocolDb.setConfig('backup_rtmr3', agentRtmr3);
         }
 
+        // Store agent's own compose so AutonomousGuardianManager can provision backups
+        if (!protocolDb.getConfig('agent_compose')) {
+          try {
+            const composeUrl = process.env.AGENT_COMPOSE_URL
+              ?? 'https://raw.githubusercontent.com/MrGarbonzo/panthers-nft/main/docker/docker-compose.secretvm-test.yml';
+            const composeRes = await fetch(composeUrl, { signal: AbortSignal.timeout(15_000) });
+            if (composeRes.ok) {
+              protocolDb.setConfig('agent_compose', await composeRes.text());
+              console.log('[protocol] Agent compose stored for backup provisioning');
+            }
+          } catch (err) {
+            console.error('[protocol] Failed to fetch agent compose:', err);
+          }
+        }
+
         const svm = secretVmClient;
         const guardianVmClient = {
           createVm: async (params: { name: string; dockerCompose: Uint8Array }) => {
