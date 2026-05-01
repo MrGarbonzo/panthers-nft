@@ -359,14 +359,24 @@ export class TradingLoop {
       totalPositionCost += pos.entryPrice * pos.size;
     }
 
-    // Pool value = what was deposited + trading P&L
-    // Pool's liquid USDC = deposited - amount spent on positions
-    const totalDeposited = state.pool.totalUsdcDeposited;
-    const poolLiquidUsdc = Math.max(0, totalDeposited - totalPositionCost);
-    const totalValue = poolLiquidUsdc + totalPositionValue;
-    const performancePct = totalDeposited > 0
-      ? ((totalValue - totalDeposited) / totalDeposited) * 100
+    // Trading performance = how did the trades do?
+    // Unrealized P&L: current market value of positions minus what we paid
+    const unrealizedPnl = totalPositionValue - totalPositionCost;
+    // Realized P&L: sum of closed trade profits/losses
+    const realizedPnl = state.pool.tradingHistory.reduce((sum, t) => sum + t.pnl, 0);
+    const totalTradingPnl = unrealizedPnl + realizedPnl;
+
+    // Performance % based on cost basis (what was actually traded)
+    const totalCapitalDeployed = totalPositionCost + state.pool.tradingHistory.reduce(
+      (sum, t) => sum + t.price * t.size, 0,
+    );
+    const performancePct = totalCapitalDeployed > 0
+      ? (totalTradingPnl / totalCapitalDeployed) * 100
       : 0;
+
+    // Pool value = deposited USDC + trading P&L
+    const totalDeposited = state.pool.totalUsdcDeposited;
+    const totalValue = totalDeposited + totalTradingPnl;
 
     state = {
       ...state,
@@ -386,7 +396,7 @@ export class TradingLoop {
 
     await db.saveState(state, adapter, cacheWriter);
     console.log(
-      `[trading] Mark-to-market: positions=$${totalPositionValue.toFixed(2)} liquid=$${state.liquidUsdcBalance.toFixed(2)} total=$${totalValue.toFixed(2)} perf=${performancePct.toFixed(2)}%`,
+      `[trading] Mark-to-market: cost=$${totalPositionCost.toFixed(2)} market=$${totalPositionValue.toFixed(2)} pnl=$${totalTradingPnl.toFixed(2)} perf=${performancePct.toFixed(2)}%`,
     );
   }
 }
