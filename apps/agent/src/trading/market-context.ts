@@ -54,8 +54,8 @@ const MYCELIA_PRICES: Record<string, string> = {
   'wrapped-bitcoin': 'https://api.myceliasignal.com/oracle/price/btc/usd',
 };
 
-// GenVox sentiment tokens
-const GENVOX_TOKENS = ['ETH', 'BTC'];
+// GenVox sentiment tokens — disabled for now (cost too high during testing)
+const GENVOX_TOKENS: string[] = [];
 
 // Coingecko IDs from trading tokens (fallback)
 const COINGECKO_COINS: string[] = [
