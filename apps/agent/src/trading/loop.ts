@@ -349,17 +349,21 @@ export class TradingLoop {
 
     // Compute total position value at current market prices
     let totalPositionValue = 0;
+    let totalPositionCost = 0;
     for (const pos of state.pool.openPositions) {
       const token = TRADING_TOKENS.find((t) => t.baseAddress === pos.tokenMint);
       const currentPrice = token
         ? (snapshot.coins[token.coingeckoId]?.priceUsd ?? pos.entryPrice)
         : pos.entryPrice;
       totalPositionValue += currentPrice * pos.size;
+      totalPositionCost += pos.entryPrice * pos.size;
     }
 
-    // Total pool value = liquid USDC + position value
-    const totalValue = state.liquidUsdcBalance + totalPositionValue;
+    // Pool value = what was deposited + trading P&L
+    // Pool's liquid USDC = deposited - amount spent on positions
     const totalDeposited = state.pool.totalUsdcDeposited;
+    const poolLiquidUsdc = Math.max(0, totalDeposited - totalPositionCost);
+    const totalValue = poolLiquidUsdc + totalPositionValue;
     const performancePct = totalDeposited > 0
       ? ((totalValue - totalDeposited) / totalDeposited) * 100
       : 0;
