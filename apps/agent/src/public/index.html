@@ -853,8 +853,6 @@ function copyText(text) {
 // MetaMask tracks "connected accounts per site" separately from "active account".
 // We use wallet_requestPermissions to always show the account picker.
 
-let accountsChangedHandler = null;
-
 async function toggleWallet() {
   if (connectedWallet) {
     connectedWallet = null;
@@ -874,17 +872,8 @@ async function connectWallet() {
     return false;
   }
   try {
-    // wallet_requestPermissions always shows the account picker popup
-    const permissions = await window.ethereum.request({
-      method: 'wallet_requestPermissions',
-      params: [{ eth_accounts: {} }],
-    });
-
-    // After user picks an account, get it
-    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-    if (!accounts || accounts.length === 0) {
-      return false;
-    }
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    if (!accounts || accounts.length === 0) return false;
     connectedWallet = accounts[0];
     $('wallet-btn').textContent = truncAddr(connectedWallet);
     $('wallet-btn').classList.add('connected');
@@ -892,26 +881,6 @@ async function connectWallet() {
     if ($('tab-mynfts').classList.contains('active')) {
       await loadPortfolio();
     }
-
-    // Remove old listener, add fresh one
-    if (accountsChangedHandler) {
-      window.ethereum.removeListener('accountsChanged', accountsChangedHandler);
-    }
-    accountsChangedHandler = (accs) => {
-      if (accs.length === 0) {
-        connectedWallet = null;
-        portfolio = null;
-        $('wallet-btn').textContent = 'CONNECT WALLET';
-        $('wallet-btn').classList.remove('connected');
-        updateMyNftsTabState();
-        renderMyNfts();
-      } else {
-        connectedWallet = accs[0];
-        $('wallet-btn').textContent = truncAddr(connectedWallet);
-        void loadPortfolio();
-      }
-    };
-    window.ethereum.on('accountsChanged', accountsChangedHandler);
     return true;
   } catch (e) {
     console.error('Wallet connect failed:', e);
@@ -2046,6 +2015,36 @@ function renderTradingLog(decisions) {
 // Initial state
 updateMyNftsTabState();
 renderMyNfts();
+
+// MetaMask: listen for account changes from page load
+if (window.ethereum) {
+  window.ethereum.on('accountsChanged', (accs) => {
+    if (accs.length === 0) {
+      connectedWallet = null;
+      portfolio = null;
+      $('wallet-btn').textContent = 'CONNECT WALLET';
+      $('wallet-btn').classList.remove('connected');
+      updateMyNftsTabState();
+      renderMyNfts();
+    } else {
+      connectedWallet = accs[0];
+      $('wallet-btn').textContent = truncAddr(connectedWallet);
+      $('wallet-btn').classList.add('connected');
+      updateMyNftsTabState();
+      void loadPortfolio();
+    }
+  });
+
+  // Auto-reconnect if MetaMask already has a connected account
+  window.ethereum.request({ method: 'eth_accounts' }).then((accs) => {
+    if (accs && accs.length > 0) {
+      connectedWallet = accs[0];
+      $('wallet-btn').textContent = truncAddr(connectedWallet);
+      $('wallet-btn').classList.add('connected');
+      updateMyNftsTabState();
+    }
+  }).catch(() => {});
+}
 
 // Initial load
 fetchAll();
