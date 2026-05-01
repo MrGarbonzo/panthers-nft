@@ -488,6 +488,8 @@ async function main(): Promise<void> {
                 injections.join('\n      ') + '\n      - SECRET_AI_BASE_URL=',
               );
             }
+            // Backup agents boot with simple storage — they get state from primary via protocol
+            compose = compose.replace(/STORAGE_BACKEND=idiostasis/, 'STORAGE_BACKEND=simple');
             protocolDb.setConfig('agent_compose', compose);
             console.log(`[protocol] Agent compose stored for backup provisioning (${compose.length} bytes)`);
           }
