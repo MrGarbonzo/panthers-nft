@@ -809,13 +809,14 @@ async function main(): Promise<void> {
 
   let market: MarketContext | null = null;
   const x402Fetcher = x402Client
-    ? (url: string) => {
-        // Estimate cost based on known pricing
-        let cost = 0.01; // default $0.01
+    ? async (url: string) => {
+        const res = await x402Client!.fetchWithPayment(url);
+        // Only track cost after successful payment
+        let cost = 0.01; // default $0.01 (Mycelia)
         if (url.includes('genvox')) cost = 0.03;
         else if (url.includes('gloria') || url.includes('itsgloria')) cost = 0.03;
         trackX402Spend(url, cost);
-        return x402Client!.fetchWithPayment(url);
+        return res;
       }
     : undefined;
   if (x402Fetcher || coingeckoApiKey) {
