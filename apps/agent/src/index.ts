@@ -800,6 +800,12 @@ async function main(): Promise<void> {
 
     const runTradingEval = async () => {
       try {
+        // Sync wallet balance before evaluating
+        const bal = walletMonitor.getBalances().baseUsdcBalance;
+        const currentState = await db.loadState(adapter);
+        if (currentState.liquidUsdcBalance !== bal) {
+          await db.saveState({ ...currentState, liquidUsdcBalance: bal }, adapter, cacheWriter);
+        }
         const result = await tradingLoop.evaluate();
         console.log(`[trading] ${result.action}: ${result.reason}`);
         if (result.action !== 'skipped' && result.action !== 'nothing') {
