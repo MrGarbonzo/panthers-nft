@@ -751,10 +751,22 @@ async function main(): Promise<void> {
   // Sync WalletMonitor balance to state.liquidUsdcBalance
   setInterval(async () => {
     try {
-      const bal = walletMonitor.getBalances().baseUsdcBalance;
+      const onChainBal = walletMonitor.getBalances().baseUsdcBalance;
       const current = await db.loadState(adapter);
-      if (current.liquidUsdcBalance !== bal) {
-        await db.saveState({ ...current, liquidUsdcBalance: bal }, adapter, cacheWriter);
+      const hasPositions = current.pool.openPositions.length > 0;
+      if (hasPositions) {
+        // Paper trading mode: only sync UP (new deposits detected on-chain)
+        // Don't overwrite downward — paper trades reduced the balance
+        if (onChainBal > current.liquidUsdcBalance) {
+          const deposit = onChainBal - current.liquidUsdcBalance;
+          console.log(`[BalanceSync] New deposit detected: +${deposit.toFixed(2)} USDC`);
+          await db.saveState({ ...current, liquidUsdcBalance: onChainBal }, adapter, cacheWriter);
+        }
+      } else {
+        // No positions yet — sync to on-chain balance
+        if (current.liquidUsdcBalance !== onChainBal) {
+          await db.saveState({ ...current, liquidUsdcBalance: onChainBal }, adapter, cacheWriter);
+        }
       }
     } catch (err) {
       console.error('[BalanceSync] Failed:', err);
@@ -878,13 +890,18 @@ async function main(): Promise<void> {
 
     const runTradingEval = async () => {
       try {
-        // Sync wallet balance before evaluating
+        // Sync wallet balance before evaluating — respect paper trade deductions
         const balances = walletMonitor.getBalances();
-        const bal = balances.baseUsdcBalance;
-        console.log(`[trading] WalletMonitor balance: ${bal} USDC (updated ${Math.round((Date.now() - balances.baseBalanceUpdatedAt) / 1000)}s ago)`);
+        const onChainBal = balances.baseUsdcBalance;
         const currentState = await db.loadState(adapter);
-        if (currentState.liquidUsdcBalance !== bal) {
-          await db.saveState({ ...currentState, liquidUsdcBalance: bal }, adapter, cacheWriter);
+        const hasPositions = currentState.pool.openPositions.length > 0;
+        console.log(`[trading] On-chain: ${onChainBal} USDC | Paper balance: ${currentState.liquidUsdcBalance.toFixed(2)} USDC | Positions: ${currentState.pool.openPositions.length}`);
+        if (!hasPositions && currentState.liquidUsdcBalance !== onChainBal) {
+          // No positions — sync to on-chain
+          await db.saveState({ ...currentState, liquidUsdcBalance: onChainBal }, adapter, cacheWriter);
+        } else if (hasPositions && onChainBal > currentState.liquidUsdcBalance) {
+          // New deposit while positions open — add the difference
+          await db.saveState({ ...currentState, liquidUsdcBalance: onChainBal }, adapter, cacheWriter);
         }
         const result = await tradingLoop.evaluate();
         console.log(`[trading] ${result.action}: ${result.reason}`);

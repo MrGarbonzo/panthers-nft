@@ -247,6 +247,8 @@ export class TradingLoop {
             ...state.pool,
             openPositions: [...state.pool.openPositions, newPosition],
           },
+          // Paper trading: reduce liquid balance as if USDC was spent
+          liquidUsdcBalance: state.liquidUsdcBalance - tradeAmount,
         };
       } else {
         // Sell — close matching position
@@ -256,6 +258,7 @@ export class TradingLoop {
         if (posIdx >= 0) {
           const pos = state.pool.openPositions[posIdx]!;
           const pnl = (price - pos.entryPrice) * pos.size;
+          const saleValue = price * pos.size;
           const positions = [...state.pool.openPositions];
           positions.splice(posIdx, 1);
           nextState = {
@@ -278,6 +281,8 @@ export class TradingLoop {
                 },
               ],
             },
+            // Paper trading: add USDC back from sale at current price
+            liquidUsdcBalance: state.liquidUsdcBalance + saleValue,
           };
         } else {
           nextState = state;
