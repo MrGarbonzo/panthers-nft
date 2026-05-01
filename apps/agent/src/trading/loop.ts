@@ -11,6 +11,7 @@ import { computeCurrentAllocations, computeRebalanceNeeded } from './allocations
 import { computeSignals, type TechnicalSignals } from './indicators.js';
 import { evaluateTradingDecision } from '../llm/tasks.js';
 import { appendTradingDecision, type PanthersState, type Position } from '../state/schema.js';
+import { recalculateAllNavs } from '../state/nav.js';
 import { TRADING_TOKENS } from './tokens.js';
 
 export interface TradingLoopParams {
@@ -332,5 +333,56 @@ export class TradingLoop {
 
       return { action: 'skipped', reason: 'trade execution failed', tradesExecuted: 0 };
     }
+  }
+
+  /**
+   * Mark all open positions to current market prices.
+   * Updates pool value, performance %, and distributes gains/losses to NFT NAVs.
+   */
+  async markToMarket(): Promise<void> {
+    const { db, adapter, cacheWriter, marketCtx } = this.params;
+    const snapshot = marketCtx.getSnapshot();
+    if (!snapshot) return;
+
+    let state = await db.loadState(adapter);
+    if (state.pool.openPositions.length === 0) return;
+
+    // Compute total position value at current market prices
+    let totalPositionValue = 0;
+    for (const pos of state.pool.openPositions) {
+      const token = TRADING_TOKENS.find((t) => t.baseAddress === pos.tokenMint);
+      const currentPrice = token
+        ? (snapshot.coins[token.coingeckoId]?.priceUsd ?? pos.entryPrice)
+        : pos.entryPrice;
+      totalPositionValue += currentPrice * pos.size;
+    }
+
+    // Total pool value = liquid USDC + position value
+    const totalValue = state.liquidUsdcBalance + totalPositionValue;
+    const totalDeposited = state.pool.totalUsdcDeposited;
+    const performancePct = totalDeposited > 0
+      ? ((totalValue - totalDeposited) / totalDeposited) * 100
+      : 0;
+
+    state = {
+      ...state,
+      pool: {
+        ...state.pool,
+        totalUsdcCurrentValue: totalValue,
+      },
+      signals: {
+        ...state.signals,
+        lastPoolPerformancePct: performancePct,
+        lastUpdatedAt: Date.now(),
+      },
+    };
+
+    // Distribute gains/losses to NFT NAVs proportionally
+    state = recalculateAllNavs(state);
+
+    await db.saveState(state, adapter, cacheWriter);
+    console.log(
+      `[trading] Mark-to-market: positions=$${totalPositionValue.toFixed(2)} liquid=$${state.liquidUsdcBalance.toFixed(2)} total=$${totalValue.toFixed(2)} perf=${performancePct.toFixed(2)}%`,
+    );
   }
 }

@@ -916,6 +916,16 @@ async function main(): Promise<void> {
     // First evaluation 2 min after boot, then every 2 hours
     setTimeout(() => void runTradingEval(), 2 * 60 * 1000);
     setInterval(() => void runTradingEval(), 2 * 60 * 60 * 1000);
+
+    // Mark positions to market every 30 min — updates performance % and NFT NAVs
+    setInterval(() => {
+      void tradingLoop.markToMarket().catch(err => console.error('[trading] Mark-to-market error:', err));
+    }, 30 * 60 * 1000);
+    // First mark-to-market 5 min after boot
+    setTimeout(() => {
+      void tradingLoop.markToMarket().catch(err => console.error('[trading] Mark-to-market error:', err));
+    }, 5 * 60 * 1000);
+
     console.log('[Boot] Trading loop armed (first eval in 2 min, then every 2 hours)');
   } else {
     console.log('[Boot] Trading loop skipped — no market context');
