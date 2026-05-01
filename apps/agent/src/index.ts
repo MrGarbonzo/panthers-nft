@@ -491,20 +491,18 @@ async function main(): Promise<void> {
           protocolDb, protocolConfig as any, guardianVmClient,
         );
 
-        setTimeout(() => {
-          console.log('[protocol] Auto-provision check: 15 min elapsed');
+        // Check guardian health every 30 min — provision 1 guardian if none exist
+        setInterval(() => {
           void guardianManager.evaluate().catch(e => console.error('[protocol] Guardian eval failed:', e));
-        }, 15 * 60 * 1000);
-
-        setTimeout(() => {
-          console.log('[protocol] Auto-provision check: 30 min elapsed');
-          void guardianManager.evaluate().catch(e => console.error('[protocol] Guardian eval failed:', e));
-          setInterval(() => {
-            void guardianManager.evaluate().catch(e => console.error('[protocol] Guardian eval failed:', e));
-          }, 60_000);
         }, 30 * 60 * 1000);
 
-        console.log('[protocol] Guardian auto-provisioning armed (15 min / 30 min)');
+        // First check after 5 min (let boot settle)
+        setTimeout(() => {
+          console.log('[protocol] Initial guardian check');
+          void guardianManager.evaluate().catch(e => console.error('[protocol] Guardian eval failed:', e));
+        }, 5 * 60 * 1000);
+
+        console.log('[protocol] Guardian auto-provisioning armed (every 30 min)');
       }
 
     } catch (err) {
