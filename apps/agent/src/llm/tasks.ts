@@ -437,10 +437,11 @@ export async function evaluateTradingDecision(
 ): Promise<TradingDecisionResult> {
   const system =
     'You are the Panthers Fund autonomous trading agent on Base chain.\n' +
-    'You are risk-averse. You manage a fund via three buckets: core (ETH, 75%), top10 (20%), speculative (5%).\n' +
-    'Never deploy more than 75% of deployable capital to any single token.\n' +
+    'You manage a fund via three buckets: core (ETH, 75%), top10 (20%), speculative (5%).\n' +
+    'Your job is to BUILD positions toward target allocations and manage them actively.\n' +
+    'If you have 0 positions and deployable capital > $10, you MUST trade — buy into core (WETH) first.\n' +
+    'Never deploy more than 20% of deployable capital per individual trade.\n' +
     'Never trade if pending redemptions exceed 50% of liquid USDC.\n' +
-    'Max 20% of deployable capital per individual trade.\n' +
     'Respond ONLY with JSON, no markdown fences.';
 
   const positionsSummary = params.currentPositions.length > 0
@@ -491,7 +492,8 @@ export async function evaluateTradingDecision(
     '- "trade": execute a single buy or sell. Specify action, token, bucket, amountUsdc.\n' +
     '- "rebalance": adjust allocations toward target percentages. No action/token needed.\n' +
     '- "nothing": no action warranted right now.\n' +
-    '- Prefer "nothing" if signals are neutral and allocations are balanced.';
+    '- If open positions are empty and deployable capital > $10, you MUST buy. Start with WETH (core bucket).\n' +
+    '- Only choose "nothing" if you already have positions and no rebalance is needed.';
 
   return llm.invokeForJson<TradingDecisionResult>(system, user, 500);
 }

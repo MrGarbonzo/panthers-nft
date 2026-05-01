@@ -147,6 +147,22 @@ export class TradingLoop {
       `[trading] Decision: ${decision.decision} ${decision.action ?? ''} ${decision.token ?? ''} ${decision.amountUsdc ? decision.amountUsdc.toFixed(2) + ' USDC' : ''} — ${decision.reasoning}`,
     );
 
+    // Log every decision to the trading decision log — including "nothing"
+    let logState = appendTradingDecision(state, {
+      bucket: (decision.bucket as any) ?? 'core',
+      side: (decision.action as any) ?? 'buy',
+      tokenSymbol: decision.token ?? '-',
+      tokenMint: '-',
+      proposedAmountUsdc: decision.amountUsdc ?? 0,
+      decision: decision.decision === 'nothing' ? 'wait' : 'approve',
+      reasoning: decision.reasoning,
+      rsi: 0,
+      trend: 'neutral',
+      executed: false,
+      paperTrade: baseNetwork === 'base-sepolia',
+    });
+    await db.saveState(logState, adapter, cacheWriter);
+
     if (decision.decision === 'nothing') {
       return { action: 'nothing', reason: decision.reasoning, tradesExecuted: 0 };
     }
