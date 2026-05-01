@@ -476,12 +476,16 @@ async function main(): Promise<void> {
           const composeRes = await fetch(composeUrl, { signal: AbortSignal.timeout(15_000) });
           if (composeRes.ok) {
             let compose = await composeRes.text();
-            // Inject SECRET_AI_API_KEY so backup agent can boot standalone
+            // Inject secrets so backup agent can boot standalone
             const aiKey = process.env.SECRET_AI_API_KEY ?? db.config.get(CONFIG.SECRET_AI_API_KEY);
-            if (aiKey) {
+            const tokenId = db.config.get(CONFIG.ERC8004_TOKEN_ID);
+            const injections: string[] = [];
+            if (aiKey) injections.push(`- SECRET_AI_API_KEY=${aiKey}`);
+            if (tokenId) injections.push(`- ERC8004_TOKEN_ID=${tokenId}`);
+            if (injections.length > 0) {
               compose = compose.replace(
                 /- SECRET_AI_BASE_URL=/,
-                `- SECRET_AI_API_KEY=${aiKey}\n      - SECRET_AI_BASE_URL=`,
+                injections.join('\n      ') + '\n      - SECRET_AI_BASE_URL=',
               );
             }
             protocolDb.setConfig('agent_compose', compose);
