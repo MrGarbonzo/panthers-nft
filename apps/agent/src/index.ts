@@ -798,7 +798,7 @@ async function main(): Promise<void> {
       baseNetwork,
     });
 
-    setInterval(async () => {
+    const runTradingEval = async () => {
       try {
         const result = await tradingLoop.evaluate();
         console.log(`[trading] ${result.action}: ${result.reason}`);
@@ -808,8 +808,12 @@ async function main(): Promise<void> {
       } catch (err) {
         console.error('[trading] Loop error:', err);
       }
-    }, 2 * 60 * 60 * 1000);
-    console.log('[Boot] Trading loop armed (2-hour heartbeat)');
+    };
+
+    // First evaluation 2 min after boot, then every 2 hours
+    setTimeout(() => void runTradingEval(), 2 * 60 * 1000);
+    setInterval(() => void runTradingEval(), 2 * 60 * 60 * 1000);
+    console.log('[Boot] Trading loop armed (first eval in 2 min, then every 2 hours)');
   } else {
     console.log('[Boot] Trading loop skipped — no market context');
   }
