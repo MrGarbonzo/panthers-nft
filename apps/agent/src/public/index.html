@@ -1123,11 +1123,16 @@ function renderAgentSections() {
   const perf = stats ? formatPct(stats.performancePct) : '—';
 
   $('agent-ops').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
       <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">TVL</div>
         <div class="stat-value" style="font-size:22px">${tvl}</div>
         <div class="stat-sub">Total Value Locked</div>
+      </div>
+      <div class="stat-card" style="padding:14px 16px;text-align:center">
+        <div class="stat-label">LIQUID USDC</div>
+        <div class="stat-value" style="font-size:22px;color:var(--gain)">${formatUSD(stats.liquidUsdcBalance ?? 0)}</div>
+        <div class="stat-sub">On-chain Balance</div>
       </div>
       <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">PERFORMANCE</div>
@@ -1146,10 +1151,10 @@ function renderAgentSections() {
         <div class="stat-value" style="font-size:22px;color:var(--loss)">${formatUSD(costs)}</div>
         <div class="stat-sub">total infra spend</div>
       </div>
-      <div class="stat-card" style="padding:14px 16px;text-align:center;border-color:${net >= 0 ? 'var(--gain)' : 'var(--loss)'}">
-        <div class="stat-label">NET / RUNWAY</div>
-        <div class="stat-value" style="font-size:22px;color:${net >= 0 ? 'var(--gain)' : 'var(--loss)'}">${formatUSD(net)}</div>
-        <div class="stat-sub">${runwayDays > 365 ? '∞' : runwayDays + ' days'} at current burn</div>
+      <div class="stat-card" style="padding:14px 16px;text-align:center;border-color:var(--orange)">
+        <div class="stat-label">AGENT HOLDINGS</div>
+        <div class="stat-value" style="font-size:22px;color:var(--orange)">${formatUSD(stats?.liquidUsdcBalance ?? 0)}</div>
+        <div class="stat-sub">liquid USDC on-chain</div>
       </div>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">

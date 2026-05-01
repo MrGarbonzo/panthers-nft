@@ -44,6 +44,7 @@ export interface PublicPersonalFund {
 export interface PublicFundStats {
   totalPoolValueUsdc: number;
   totalUsdcDeposited: number;
+  liquidUsdcBalance: number;
   performancePct: number;
   totalNftCount: number;
   avgNavUsdc: number;
@@ -143,6 +144,7 @@ export class PublicCacheWriter {
       stats: {
         totalPoolValueUsdc,
         totalUsdcDeposited: state.pool.totalUsdcDeposited,
+        liquidUsdcBalance: state.liquidUsdcBalance ?? 0,
         performancePct: state.signals.lastPoolPerformancePct,
         totalNftCount,
         avgNavUsdc,
