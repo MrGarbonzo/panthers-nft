@@ -119,9 +119,10 @@ export class AutonomousGuardianManager {
     if (totalBackups === 0) {
       const pendingBackupVmId = this.db.getConfig('backup_provisioning_pending');
       const pendingBackupSince = parseInt(this.db.getConfig('backup_provisioning_started') ?? '0', 10);
-      if (pendingBackupVmId && pendingBackupSince > 0 && (Date.now() - pendingBackupSince) > 10 * 60 * 1000) {
-        // Pending backup VM has been waiting >10 min — assume it failed, clear and retry
-        console.log(`[guardian-manager] backup VM ${pendingBackupVmId.slice(0, 8)} timed out after 10 min — clearing`);
+      const pendingAge = pendingBackupSince > 0 ? Date.now() - pendingBackupSince : Infinity;
+      if (pendingBackupVmId && pendingAge > 10 * 60 * 1000) {
+        // Pending backup VM has been waiting >10 min (or has no timestamp) — assume it failed
+        console.log(`[guardian-manager] backup VM ${pendingBackupVmId.slice(0, 8)} timed out — clearing`);
         this.db.setConfig('backup_provisioning_pending', '');
         this.db.setConfig('backup_provisioning_started', '');
       } else if (pendingBackupVmId) {
