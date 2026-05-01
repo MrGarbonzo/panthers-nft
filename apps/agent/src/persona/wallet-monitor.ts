@@ -49,9 +49,10 @@ export class WalletMonitor {
   }
 
   private async pollBaseUsdc(): Promise<void> {
+    // balanceOf(address) — selector 0x70a08231 + address padded to 32 bytes
     const calldata =
-      '0x70a08231000000000000000000000000' +
-      this.params.evmWalletAddress.slice(2).padStart(64, '0');
+      '0x70a08231' +
+      this.params.evmWalletAddress.slice(2).toLowerCase().padStart(64, '0');
     try {
       const res = await fetch(this.params.rpcUrl, {
         method: 'POST',
