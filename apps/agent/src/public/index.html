@@ -1141,10 +1141,21 @@ function renderAgentSections() {
         <div class="stat-value" style="font-size:22px;color:var(--gain)">${formatUSD(fees)}</div>
         <div class="stat-sub">redeem fees</div>
       </div>
-      <div class="stat-card" style="padding:14px 16px;text-align:center">
-        <div class="stat-label">COSTS</div>
+      <div class="stat-card" style="padding:14px 16px;text-align:center;cursor:pointer" onclick="document.getElementById('x402-breakdown').style.display = document.getElementById('x402-breakdown').style.display === 'none' ? 'block' : 'none'">
+        <div class="stat-label">COSTS &#9662;</div>
         <div class="stat-value" style="font-size:22px;color:var(--loss)">${formatUSD(costs)}</div>
         <div class="stat-sub">total infra spend</div>
+        <div id="x402-breakdown" style="display:none;margin-top:10px;text-align:left;font-size:11px;font-family:'Space Mono',monospace;border-top:1px solid var(--border);padding-top:8px">
+          ${(() => {
+            const x = pf.x402Spend;
+            if (!x) return '<div style="color:var(--muted)">No x402 spend recorded yet</div>';
+            return '<div style="color:var(--muted);margin-bottom:4px;font-family:Bebas Neue,sans-serif;font-size:12px;letter-spacing:1px">X402 BREAKDOWN</div>' +
+              '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>Mycelia (prices)</span><span style="color:var(--loss)">' + formatUSD(x.myceliaUsdc ?? 0) + '</span></div>' +
+              '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>GenVox (sentiment)</span><span style="color:var(--loss)">' + formatUSD(x.genvoxUsdc ?? 0) + '</span></div>' +
+              '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>Gloria (news)</span><span style="color:var(--loss)">' + formatUSD(x.gloriaUsdc ?? 0) + '</span></div>' +
+              '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>SecretVM (infra)</span><span style="color:var(--loss)">' + formatUSD(x.secretvmUsdc ?? 0) + '</span></div>';
+          })()}
+        </div>
       </div>
       <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">PERFORMANCE</div>

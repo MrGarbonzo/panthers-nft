@@ -766,9 +766,57 @@ async function main(): Promise<void> {
   scheduler.start();
   console.log('Auction ticker + scheduler started');
 
+  // x402 spending tracker — wraps fetcher to record per-service costs
+  const x402SpendTracker = { mycelia: 0, genvox: 0, gloria: 0, secretvm: 0 };
+  const trackX402Spend = (url: string, amountUsdc: number) => {
+    if (url.includes('myceliasignal')) x402SpendTracker.mycelia += amountUsdc;
+    else if (url.includes('genvox')) x402SpendTracker.genvox += amountUsdc;
+    else if (url.includes('gloria') || url.includes('itsgloria')) x402SpendTracker.gloria += amountUsdc;
+    else if (url.includes('secretai')) x402SpendTracker.secretvm += amountUsdc;
+  };
+
+  // Persist x402 spend to DB every 10 minutes
+  setInterval(async () => {
+    try {
+      const s = await db.loadState(adapter);
+      const pf = s.personalFund ?? {} as any;
+      const totalX402 = x402SpendTracker.mycelia + x402SpendTracker.genvox + x402SpendTracker.gloria + x402SpendTracker.secretvm;
+      if (totalX402 > 0) {
+        await db.saveState({
+          ...s,
+          personalFund: {
+            ...pf,
+            totalInfraSpendBaseUsdc: (pf.totalInfraSpendBaseUsdc ?? 0) + totalX402,
+            x402Spend: {
+              myceliaUsdc: (pf.x402Spend?.myceliaUsdc ?? 0) + x402SpendTracker.mycelia,
+              genvoxUsdc: (pf.x402Spend?.genvoxUsdc ?? 0) + x402SpendTracker.genvox,
+              gloriaUsdc: (pf.x402Spend?.gloriaUsdc ?? 0) + x402SpendTracker.gloria,
+              secretvmUsdc: (pf.x402Spend?.secretvmUsdc ?? 0) + x402SpendTracker.secretvm,
+            },
+            lastUpdatedAt: Date.now(),
+          },
+        }, adapter, cacheWriter);
+        // Reset tracker after persisting
+        x402SpendTracker.mycelia = 0;
+        x402SpendTracker.genvox = 0;
+        x402SpendTracker.gloria = 0;
+        x402SpendTracker.secretvm = 0;
+      }
+    } catch (err) {
+      console.error('[x402-spend] Failed to persist:', err);
+    }
+  }, 10 * 60 * 1000);
+
   let market: MarketContext | null = null;
   const x402Fetcher = x402Client
-    ? (url: string) => x402Client!.fetchWithPayment(url)
+    ? (url: string) => {
+        // Estimate cost based on known pricing
+        let cost = 0.01; // default $0.01
+        if (url.includes('genvox')) cost = 0.03;
+        else if (url.includes('gloria') || url.includes('itsgloria')) cost = 0.03;
+        trackX402Spend(url, cost);
+        return x402Client!.fetchWithPayment(url);
+      }
     : undefined;
   if (x402Fetcher || coingeckoApiKey) {
     market = new MarketContext({

@@ -1,8 +1,16 @@
+export interface X402SpendRecord {
+  myceliaUsdc: number;
+  genvoxUsdc: number;
+  gloriaUsdc: number;
+  secretvmUsdc: number;
+}
+
 export interface PersonalFund {
   totalFeesCollectedUsdc: number;
   totalDonationsUsdc: number;
   totalInfraSpendSolanaUsdc: number;
   totalInfraSpendBaseUsdc: number;
+  x402Spend?: X402SpendRecord;
   lastUpdatedAt: number;
 }
 
