@@ -1130,12 +1130,17 @@ function renderAgentSections() {
         <div class="stat-sub">Total Value Locked</div>
       </div>
       <div class="stat-card" style="padding:14px 16px;text-align:center">
+        <div class="stat-label">PERFORMANCE</div>
+        <div class="stat-value" style="font-size:22px;color:${perfColor}">${perf}</div>
+        <div class="stat-sub">Since Inception</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">AGENT HOLDINGS</div>
         <div class="stat-value" style="font-size:22px;color:var(--orange)">${formatUSD(Math.max(0, (stats?.liquidUsdcBalance ?? 0) - (stats?.totalPoolValueUsdc ?? 0)))}</div>
         <div class="stat-sub">fees + donations (excl. user funds)</div>
       </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
       <div class="stat-card" style="padding:14px 16px;text-align:center">
         <div class="stat-label">REVENUE</div>
         <div class="stat-value" style="font-size:22px;color:var(--gain)">${formatUSD(fees)}</div>
@@ -1156,11 +1161,6 @@ function renderAgentSections() {
               '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>SecretVM (infra)</span><span style="color:var(--loss)">' + formatUSD(x.secretvmUsdc ?? 0) + '</span></div>';
           })()}
         </div>
-      </div>
-      <div class="stat-card" style="padding:14px 16px;text-align:center">
-        <div class="stat-label">PERFORMANCE</div>
-        <div class="stat-value" style="font-size:22px;color:${perfColor}">${perf}</div>
-        <div class="stat-sub">Since Inception</div>
       </div>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
