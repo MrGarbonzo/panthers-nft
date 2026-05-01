@@ -469,18 +469,26 @@ async function main(): Promise<void> {
         }
 
         // Store agent's own compose so AutonomousGuardianManager can provision backups
-        if (!protocolDb.getConfig('agent_compose')) {
-          try {
-            const composeUrl = process.env.AGENT_COMPOSE_URL
-              ?? 'https://raw.githubusercontent.com/MrGarbonzo/panthers-nft/main/docker/docker-compose.secretvm-test.yml';
-            const composeRes = await fetch(composeUrl, { signal: AbortSignal.timeout(15_000) });
-            if (composeRes.ok) {
-              protocolDb.setConfig('agent_compose', await composeRes.text());
-              console.log('[protocol] Agent compose stored for backup provisioning');
+        // Always update — inject current SECRET_AI_API_KEY so backup can boot without env_file
+        try {
+          const composeUrl = process.env.AGENT_COMPOSE_URL
+            ?? 'https://raw.githubusercontent.com/MrGarbonzo/panthers-nft/main/docker/docker-compose.secretvm-test.yml';
+          const composeRes = await fetch(composeUrl, { signal: AbortSignal.timeout(15_000) });
+          if (composeRes.ok) {
+            let compose = await composeRes.text();
+            // Inject SECRET_AI_API_KEY so backup agent can boot standalone
+            const aiKey = process.env.SECRET_AI_API_KEY ?? db.config.get(CONFIG.SECRET_AI_API_KEY);
+            if (aiKey) {
+              compose = compose.replace(
+                /- SECRET_AI_BASE_URL=/,
+                `- SECRET_AI_API_KEY=${aiKey}\n      - SECRET_AI_BASE_URL=`,
+              );
             }
-          } catch (err) {
-            console.error('[protocol] Failed to fetch agent compose:', err);
+            protocolDb.setConfig('agent_compose', compose);
+            console.log(`[protocol] Agent compose stored for backup provisioning (${compose.length} bytes)`);
           }
+        } catch (err) {
+          console.error('[protocol] Failed to fetch agent compose:', err);
         }
 
         const svm = secretVmClient;
