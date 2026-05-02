@@ -967,22 +967,65 @@ async function fetchAll() {
 function renderFund() {
   if (!stats) return;
 
-  // Allocation bar
+  // Allocation pie chart + holdings
   const a = stats.allocations;
-  const total = a.corePct + a.top10Pct + a.speculativePct;
-  const cashPct = Math.max(0, 100 - total);
+  const tvlNum = stats.totalPoolValueUsdc || 1;
+  const corePct = Math.min(100, (a.coreUsdc / tvlNum) * 100);
+  const top10Pct = Math.min(100, (a.top10Usdc / tvlNum) * 100);
+  const specPct = Math.min(100, (a.speculativeUsdc / tvlNum) * 100);
+  const cashUsdc = Math.max(0, tvlNum - a.coreUsdc - a.top10Usdc - a.speculativeUsdc);
+  const cashPct = Math.max(0, 100 - corePct - top10Pct - specPct);
+
+  // Build conic gradient for pie chart
+  const slices = [];
+  let angle = 0;
+  if (corePct > 0) { slices.push(`#3A3D42 ${angle}deg ${angle + corePct * 3.6}deg`); angle += corePct * 3.6; }
+  if (top10Pct > 0) { slices.push(`var(--orange) ${angle}deg ${angle + top10Pct * 3.6}deg`); angle += top10Pct * 3.6; }
+  if (specPct > 0) { slices.push(`var(--red) ${angle}deg ${angle + specPct * 3.6}deg`); angle += specPct * 3.6; }
+  if (cashPct > 0) { slices.push(`var(--surface2) ${angle}deg ${angle + cashPct * 3.6}deg`); }
+  const gradient = slices.length > 0 ? slices.join(', ') : 'var(--surface2) 0deg 360deg';
+
+  // Aggregate positions by symbol
+  const holdings = {};
+  for (const p of stats.openPositions) {
+    if (!holdings[p.symbol]) holdings[p.symbol] = { symbol: p.symbol, bucket: p.bucket, sizeToken: 0, sizeUsdc: 0 };
+    holdings[p.symbol].sizeToken += p.sizeToken || 0;
+    holdings[p.symbol].sizeUsdc += p.sizeUsdc || 0;
+  }
+
   $('alloc-section').innerHTML = `
-    <div class="alloc-label">ALLOCATION</div>
-    <div class="alloc-bar">
-      ${a.corePct > 0 ? `<div class="alloc-seg core" style="flex:${a.corePct}">CORE (ETH) ${a.corePct.toFixed(0)}%</div>` : ''}
-      ${a.top10Pct > 0 ? `<div class="alloc-seg top10" style="flex:${a.top10Pct}">TOP 10 ${a.top10Pct.toFixed(0)}%</div>` : ''}
-      ${a.speculativePct > 0 ? `<div class="alloc-seg llm" style="flex:${a.speculativePct}">SPEC ${a.speculativePct.toFixed(0)}%</div>` : ''}
-      ${cashPct > 0 ? `<div class="alloc-seg" style="flex:${cashPct};background:var(--surface2)">LIQUID USDC ${cashPct.toFixed(0)}%</div>` : ''}
-    </div>
-    <div class="alloc-legend">
-      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:#3A3D42"></div>CORE (ETH) ${formatUSD(a.coreUsdc)} <span style="color:var(--muted);font-size:11px">target 75%</span></div>
-      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:var(--orange)"></div>TOP 10 ${formatUSD(a.top10Usdc)} <span style="color:var(--muted);font-size:11px">target 20%</span></div>
-      <div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:var(--red)"></div>SPECULATIVE ${formatUSD(a.speculativeUsdc)} <span style="color:var(--muted);font-size:11px">target 5%</span></div>
+    <div class="alloc-label">PORTFOLIO ALLOCATION</div>
+    <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+      <div style="width:140px;height:140px;border-radius:50%;background:conic-gradient(${gradient});flex-shrink:0;position:relative">
+        <div style="position:absolute;inset:30px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--text)">${formatUSD(tvlNum)}</div>
+          <div style="font-size:10px;color:var(--muted)">TVL</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:200px">
+        ${Object.values(holdings).map(h => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+            <div>
+              <span style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--text)">${h.symbol}</span>
+              <span style="font-size:11px;color:var(--muted);margin-left:6px">${h.bucket.toUpperCase()}</span>
+            </div>
+            <div style="text-align:right">
+              <div style="font-family:'Space Mono',monospace;font-size:13px;color:var(--text)">${h.sizeToken.toFixed(6)} ${h.symbol}</div>
+              <div style="font-size:11px;color:var(--muted)">${formatUSD(h.sizeUsdc)}</div>
+            </div>
+          </div>
+        `).join('')}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+          <div>
+            <span style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--text)">USDC</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:6px">CASH</span>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'Space Mono',monospace;font-size:13px;color:var(--text)">${cashUsdc.toFixed(2)} USDC</div>
+            <div style="font-size:11px;color:var(--muted)">${cashPct.toFixed(0)}% of pool</div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 

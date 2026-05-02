@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { PanthersState } from '../state/schema.js';
+import { TRADING_TOKENS } from '../trading/tokens.js';
 
 export interface NftPublicRecord {
   tokenId: string;
@@ -17,8 +18,10 @@ export interface NftPublicRecord {
 
 export interface PublicPosition {
   tokenMint: string;
+  symbol: string;
   bucket: 'core' | 'top10' | 'speculative';
   entryPrice: number;
+  sizeToken: number;
   sizeUsdc: number;
   openedAt: number;
 }
@@ -136,13 +139,18 @@ export class PublicCacheWriter {
       speculativeValueUsdc: specValue,
       lastRebalancedAt: state.pool.allocations.lastRebalancedAt,
     };
-    const openPositions: PublicPosition[] = state.pool.openPositions.map((p) => ({
-      tokenMint: p.tokenMint,
-      bucket: p.bucket,
-      entryPrice: p.entryPrice,
-      sizeUsdc: p.entryPrice * p.size,
-      openedAt: p.openedAt,
-    }));
+    const openPositions: PublicPosition[] = state.pool.openPositions.map((p) => {
+      const token = TRADING_TOKENS.find((t) => t.baseAddress === p.tokenMint);
+      return {
+        tokenMint: p.tokenMint,
+        symbol: token?.symbol ?? p.tokenMint.slice(0, 8),
+        bucket: p.bucket,
+        entryPrice: p.entryPrice,
+        sizeToken: p.size,
+        sizeUsdc: p.entryPrice * p.size,
+        openedAt: p.openedAt,
+      };
+    });
     const recentTrades: PublicTradeRecord[] = state.pool.tradingHistory
       .slice(-20)
       .reverse()
