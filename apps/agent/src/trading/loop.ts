@@ -58,21 +58,23 @@ export class TradingLoop {
 
     const state = await db.loadState(adapter);
 
-    // Compute liquidity
+    // Compute pool-specific liquidity (not wallet balance)
     const queuedRedemptionsUsdc = Object.values(state.redemptionQueue ?? {})
       .filter((r) => r.status === 'queued')
       .reduce((sum, r) => sum + r.netUsdc, 0);
+
+    // Pool's available USDC = what was deposited - what's already in positions
+    const totalPositionCostBasis = state.pool.openPositions.reduce(
+      (sum, p) => sum + p.entryPrice * p.size, 0,
+    );
+    const poolAvailableUsdc = Math.max(0, state.pool.totalUsdcDeposited - totalPositionCostBasis);
 
     const totalTvl = state.pool.totalUsdcCurrentValue;
     const liquidityFloor = computeLiquidityFloor({
       totalPoolValueUsdc: totalTvl,
       queuedRedemptionsUsdc,
     });
-    const deployableCapital = computeDeployableCapital({
-      totalPoolValueUsdc: totalTvl,
-      liquidUsdcBalance: state.liquidUsdcBalance,
-      queuedRedemptionsUsdc,
-    });
+    const deployableCapital = Math.max(0, poolAvailableUsdc - liquidityFloor - queuedRedemptionsUsdc);
 
     if (deployableCapital < MIN_DEPLOYABLE_USDC) {
       console.log(`[trading] Insufficient deployable capital: ${deployableCapital.toFixed(2)} USDC`);
