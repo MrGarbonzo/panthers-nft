@@ -354,13 +354,15 @@ export class TradingLoop {
     if (state.pool.openPositions.length === 0) return;
 
     // Compute total position value at current market prices
+    // If market data returns $0 (feed down), use entry price as fallback
     let totalPositionValue = 0;
     let totalPositionCost = 0;
     for (const pos of state.pool.openPositions) {
       const token = TRADING_TOKENS.find((t) => t.baseAddress === pos.tokenMint);
-      const currentPrice = token
-        ? (snapshot.coins[token.coingeckoId]?.priceUsd ?? pos.entryPrice)
-        : pos.entryPrice;
+      const marketPrice = token
+        ? (snapshot.coins[token.coingeckoId]?.priceUsd ?? 0)
+        : 0;
+      const currentPrice = marketPrice > 0 ? marketPrice : pos.entryPrice;
       totalPositionValue += currentPrice * pos.size;
       totalPositionCost += pos.entryPrice * pos.size;
     }
