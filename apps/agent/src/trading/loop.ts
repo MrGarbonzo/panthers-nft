@@ -231,9 +231,13 @@ export class TradingLoop {
         console.log(`[trading] Swap executed: ${result.txHash}`);
       }
 
-      // Record in state
+      // Record in state — abort if price is 0 (Mycelia x402 failed)
       const price = snapshot.coins[token.coingeckoId]?.priceUsd ?? 0;
-      const size = price > 0 ? tradeAmount / price : 0;
+      if (price <= 0) {
+        console.error(`[trading] Aborting — ${token.symbol} price is $0 (market data unavailable)`);
+        return { action: 'skipped', reason: 'zero price — market data unavailable', tradesExecuted: 0 };
+      }
+      const size = tradeAmount / price;
       let nextState: PanthersState;
 
       if (decision.action === 'buy') {

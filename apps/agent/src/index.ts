@@ -98,6 +98,22 @@ async function main(): Promise<void> {
   const nftImagesDir = '/data/nft-images';
   try { mkdirSync(nftImagesDir, { recursive: true }); } catch {}
 
+  // Clean up bogus zero-price positions at startup
+  {
+    const bootState = await db.loadState(adapter);
+    const validPositions = bootState.pool.openPositions.filter(
+      (p) => p.entryPrice > 0 && p.size > 0,
+    );
+    const removed = bootState.pool.openPositions.length - validPositions.length;
+    if (removed > 0) {
+      console.log(`[Boot] Removed ${removed} zero-price positions`);
+      await db.saveState({
+        ...bootState,
+        pool: { ...bootState.pool, openPositions: validPositions },
+      }, adapter, cacheWriter);
+    }
+  }
+
   // Run expired sale cleanup at startup
   {
     const bootState = await db.loadState(adapter);
