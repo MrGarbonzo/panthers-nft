@@ -1,5 +1,7 @@
 export interface X402SpendRecord {
-  myceliaUsdc: number;
+  pricesUsdc: number;
+  /** @deprecated Use pricesUsdc */
+  myceliaUsdc?: number;
   genvoxUsdc: number;
   gloriaUsdc: number;
   secretvmUsdc: number;

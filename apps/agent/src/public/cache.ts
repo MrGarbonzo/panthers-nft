@@ -42,7 +42,7 @@ export interface PublicPersonalFund {
   totalInfraSpendSolanaUsdc: number;
   totalInfraSpendBaseUsdc: number;
   x402Spend?: {
-    myceliaUsdc: number;
+    pricesUsdc: number;
     genvoxUsdc: number;
     gloriaUsdc: number;
     secretvmUsdc: number;
@@ -200,7 +200,12 @@ export class PublicCacheWriter {
           totalDonationsUsdc: state.personalFund?.totalDonationsUsdc ?? 0,
           totalInfraSpendSolanaUsdc: state.personalFund?.totalInfraSpendSolanaUsdc ?? 0,
           totalInfraSpendBaseUsdc: state.personalFund?.totalInfraSpendBaseUsdc ?? 0,
-          x402Spend: state.personalFund?.x402Spend ?? undefined,
+          x402Spend: state.personalFund?.x402Spend ? {
+            pricesUsdc: state.personalFund.x402Spend.pricesUsdc ?? state.personalFund.x402Spend.myceliaUsdc ?? 0,
+            genvoxUsdc: state.personalFund.x402Spend.genvoxUsdc ?? 0,
+            gloriaUsdc: state.personalFund.x402Spend.gloriaUsdc ?? 0,
+            secretvmUsdc: state.personalFund.x402Spend.secretvmUsdc ?? 0,
+          } : undefined,
           lastUpdatedAt: state.personalFund?.lastUpdatedAt ?? 0,
         },
         lastUpdatedAt: now,

@@ -815,9 +815,9 @@ async function main(): Promise<void> {
   console.log('Auction ticker + scheduler started');
 
   // x402 spending tracker — wraps fetcher to record per-service costs
-  const x402SpendTracker = { mycelia: 0, genvox: 0, gloria: 0, secretvm: 0 };
+  const x402SpendTracker = { prices: 0, genvox: 0, gloria: 0, secretvm: 0 };
   const trackX402Spend = (url: string, amountUsdc: number) => {
-    if (url.includes('myceliasignal') || url.includes('x402-gateway') || url.includes('x402engine')) x402SpendTracker.mycelia += amountUsdc;
+    if (url.includes('myceliasignal') || url.includes('x402-gateway') || url.includes('x402engine')) x402SpendTracker.prices += amountUsdc;
     else if (url.includes('genvox')) x402SpendTracker.genvox += amountUsdc;
     else if (url.includes('gloria') || url.includes('itsgloria')) x402SpendTracker.gloria += amountUsdc;
     else if (url.includes('secretai')) x402SpendTracker.secretvm += amountUsdc;
@@ -828,15 +828,16 @@ async function main(): Promise<void> {
     try {
       const s = await db.loadState(adapter);
       const pf = s.personalFund ?? {} as any;
-      const totalX402 = x402SpendTracker.mycelia + x402SpendTracker.genvox + x402SpendTracker.gloria + x402SpendTracker.secretvm;
+      const totalX402 = x402SpendTracker.prices + x402SpendTracker.genvox + x402SpendTracker.gloria + x402SpendTracker.secretvm;
       if (totalX402 > 0) {
+        const prevPrices = (pf.x402Spend?.pricesUsdc ?? pf.x402Spend?.myceliaUsdc ?? 0);
         await db.saveState({
           ...s,
           personalFund: {
             ...pf,
             totalInfraSpendBaseUsdc: (pf.totalInfraSpendBaseUsdc ?? 0) + totalX402,
             x402Spend: {
-              myceliaUsdc: (pf.x402Spend?.myceliaUsdc ?? 0) + x402SpendTracker.mycelia,
+              pricesUsdc: prevPrices + x402SpendTracker.prices,
               genvoxUsdc: (pf.x402Spend?.genvoxUsdc ?? 0) + x402SpendTracker.genvox,
               gloriaUsdc: (pf.x402Spend?.gloriaUsdc ?? 0) + x402SpendTracker.gloria,
               secretvmUsdc: (pf.x402Spend?.secretvmUsdc ?? 0) + x402SpendTracker.secretvm,
@@ -845,7 +846,7 @@ async function main(): Promise<void> {
           },
         }, adapter, cacheWriter);
         // Reset tracker after persisting
-        x402SpendTracker.mycelia = 0;
+        x402SpendTracker.prices = 0;
         x402SpendTracker.genvox = 0;
         x402SpendTracker.gloria = 0;
         x402SpendTracker.secretvm = 0;

@@ -1205,7 +1205,7 @@ function renderAgentSections() {
             const x = pf.x402Spend;
             if (!x) return '<div style="color:var(--muted)">No x402 spend recorded yet</div>';
             return '<div style="color:var(--muted);margin-bottom:4px;font-family:Bebas Neue,sans-serif;font-size:12px;letter-spacing:1px">X402 BREAKDOWN</div>' +
-              '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>Mycelia (prices)</span><span style="color:var(--loss)">' + formatUSD(x.myceliaUsdc ?? 0) + '</span></div>' +
+              '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>Prices (x402engine)</span><span style="color:var(--loss)">' + formatUSD(x.pricesUsdc ?? x.myceliaUsdc ?? 0) + '</span></div>' +
               '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>GenVox (sentiment)</span><span style="color:var(--loss)">' + formatUSD(x.genvoxUsdc ?? 0) + '</span></div>' +
               '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>Gloria (news)</span><span style="color:var(--loss)">' + formatUSD(x.gloriaUsdc ?? 0) + '</span></div>' +
               '<div style="display:flex;justify-content:space-between;margin:2px 0"><span>SecretVM (infra)</span><span style="color:var(--loss)">' + formatUSD(x.secretvmUsdc ?? 0) + '</span></div>';
