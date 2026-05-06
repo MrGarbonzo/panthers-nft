@@ -817,7 +817,7 @@ async function main(): Promise<void> {
   // x402 spending tracker — wraps fetcher to record per-service costs
   const x402SpendTracker = { mycelia: 0, genvox: 0, gloria: 0, secretvm: 0 };
   const trackX402Spend = (url: string, amountUsdc: number) => {
-    if (url.includes('myceliasignal')) x402SpendTracker.mycelia += amountUsdc;
+    if (url.includes('myceliasignal') || url.includes('x402-gateway') || url.includes('x402engine')) x402SpendTracker.mycelia += amountUsdc;
     else if (url.includes('genvox')) x402SpendTracker.genvox += amountUsdc;
     else if (url.includes('gloria') || url.includes('itsgloria')) x402SpendTracker.gloria += amountUsdc;
     else if (url.includes('secretai')) x402SpendTracker.secretvm += amountUsdc;
@@ -860,8 +860,9 @@ async function main(): Promise<void> {
     ? async (url: string) => {
         const res = await x402Client!.fetchWithPayment(url);
         // Only track cost after successful payment
-        let cost = 0.01; // default $0.01 (Mycelia)
-        if (url.includes('genvox')) cost = 0.03;
+        let cost = 0.001; // default $0.001 (x402engine)
+        if (url.includes('myceliasignal')) cost = 0.01;
+        else if (url.includes('genvox')) cost = 0.03;
         else if (url.includes('gloria') || url.includes('itsgloria')) cost = 0.03;
         trackX402Spend(url, cost);
         return res;

@@ -48,12 +48,12 @@ export interface MarketContextParams {
   refreshMs?: number;
 }
 
-// Mycelia Signal price endpoints — DISABLED: returning 500 since May 1, paying for errors
-// Re-enable when Mycelia service is stable
-const MYCELIA_PRICES: Record<string, string> = {
-  // 'ethereum': 'https://api.myceliasignal.com/oracle/price/eth/usd',
-  // 'wrapped-bitcoin': 'https://api.myceliasignal.com/oracle/price/btc/usd',
-};
+// x402engine — CoinGecko-format prices via x402 ($0.001/call)
+// Single call for all tokens, returns { "ethereum": { "usd": 2300, "usd_24h_change": 1.5 }, ... }
+const X402ENGINE_BASE = 'https://x402-gateway-production.up.railway.app';
+const X402ENGINE_PRICE_URL = `${X402ENGINE_BASE}/api/crypto/price?ids=${
+  [...new Set(TRADING_TOKENS.map((t) => t.coingeckoId))].join(',')
+}&vs_currencies=usd&include_24hr_change=true`;
 
 // GenVox sentiment tokens — disabled for now (cost too high during testing)
 const GENVOX_TOKENS: string[] = [];
@@ -128,18 +128,17 @@ export class MarketContext {
   private async refresh(): Promise<void> {
     let coins: Record<string, CoinSnapshot>;
 
-    // Try x402 Mycelia Signal first, fall back to CoinGecko
+    // Try x402engine first, fall back to CoinGecko
     if (this.params.x402Fetcher) {
       try {
-        coins = await this.fetchMyceliaSignal();
-        // If all prices are 0, x402 payment likely failed — try CoinGecko fallback
+        coins = await this.fetchX402Engine();
         const hasData = Object.values(coins).some((c) => c.priceUsd > 0);
         if (!hasData && this.params.coingeckoApiKey) {
-          console.warn('[market] Mycelia returned all zeros — falling back to CoinGecko');
+          console.warn('[market] x402engine returned all zeros — falling back to CoinGecko');
           coins = await this.fetchCoinGecko();
         }
       } catch (err) {
-        console.error('[market] Mycelia failed, trying CoinGecko fallback:', err);
+        console.error('[market] x402engine failed, trying CoinGecko fallback:', err);
         if (this.params.coingeckoApiKey) {
           coins = await this.fetchCoinGecko();
         } else {
@@ -171,48 +170,30 @@ export class MarketContext {
     );
   }
 
-  // ── Mycelia Signal (x402) ──
+  // ── x402engine (x402) — CoinGecko-format prices, $0.001/call ──
 
-  private async fetchMyceliaSignal(): Promise<Record<string, CoinSnapshot>> {
+  private async fetchX402Engine(): Promise<Record<string, CoinSnapshot>> {
     const fetcher = this.params.x402Fetcher!;
     const out: Record<string, CoinSnapshot> = {};
 
-    const results = await Promise.allSettled(
-      Object.entries(MYCELIA_PRICES).map(async ([coinId, url]) => {
-        const res = await fetcher(url);
-        const text = await res.text();
-        let price = 0;
-        try {
-          const data = JSON.parse(text) as { price?: string; canonical?: string; pair?: string };
-          if (data.price) {
-            price = Number(data.price);
-          } else if (data.canonical) {
-            // Mycelia canonical format: v1|PRICE|ETHUSD|2260.58|USD|2|sources...|method|timestamp|nonce
-            const parts = data.canonical.split('|');
-            price = Number(parts[3] ?? 0);
-          }
-        } catch {
-          console.error(`[market] Mycelia parse error for ${coinId}: ${text.slice(0, 200)}`);
-        }
-        if (price === 0) {
-          console.warn(`[market] Mycelia ${coinId}: price=0 (response: ${text.slice(0, 200)})`);
-        }
-        return { coinId, price };
-      }),
-    );
+    try {
+      const res = await fetcher(X402ENGINE_PRICE_URL);
+      const data = (await res.json()) as Record<string, { usd?: number; usd_24h_change?: number }>;
 
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        out[result.value.coinId] = {
-          priceUsd: result.value.price,
-          change24hPct: 0,
-        };
-      } else {
-        console.error(`[market] Mycelia fetch failed:`, result.reason);
+      for (const token of TRADING_TOKENS) {
+        const entry = data[token.coingeckoId];
+        if (entry?.usd) {
+          out[token.coingeckoId] = {
+            priceUsd: entry.usd,
+            change24hPct: entry.usd_24h_change ?? 0,
+          };
+        }
       }
+    } catch (err) {
+      console.error('[market] x402engine fetch failed:', err);
     }
 
-    // Fill in any trading tokens not covered by Mycelia with price 0
+    // Fill in missing tokens with price 0
     for (const token of TRADING_TOKENS) {
       if (!out[token.coingeckoId]) {
         out[token.coingeckoId] = { priceUsd: 0, change24hPct: 0 };
