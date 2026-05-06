@@ -48,10 +48,11 @@ export interface MarketContextParams {
   refreshMs?: number;
 }
 
-// Mycelia Signal price endpoints
+// Mycelia Signal price endpoints — DISABLED: returning 500 since May 1, paying for errors
+// Re-enable when Mycelia service is stable
 const MYCELIA_PRICES: Record<string, string> = {
-  'ethereum': 'https://api.myceliasignal.com/oracle/price/eth/usd',
-  'wrapped-bitcoin': 'https://api.myceliasignal.com/oracle/price/btc/usd',
+  // 'ethereum': 'https://api.myceliasignal.com/oracle/price/eth/usd',
+  // 'wrapped-bitcoin': 'https://api.myceliasignal.com/oracle/price/btc/usd',
 };
 
 // GenVox sentiment tokens — disabled for now (cost too high during testing)
